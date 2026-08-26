@@ -409,7 +409,17 @@ pub fn judge(
 
 /// Write every cohort member into `dir` as `<label>.json`, re-checking the
 /// baseline's checksum on the way out.
-fn stage(outcome: &RebaseOutcome, dir: &Path) -> Result<(), ScorerError> {
+///
+/// Public because a caller may want the numbers without a verdict — a sampled
+/// screen, for instance, which [`judge`] refuses outright and rightly so.
+/// Staging is the part that is safe to share; deciding is not.
+///
+/// # Errors
+///
+/// [`ScorerError::Io`] when a creature cannot be written, or
+/// [`ScorerError::BaselineDrift`] when the staged baseline is not the champion
+/// the cohort was built from.
+pub fn stage(outcome: &RebaseOutcome, dir: &Path) -> Result<(), ScorerError> {
     for candidate in &outcome.cohort {
         let json = neat_core::creature_to_json(&candidate.creature)
             .map_err(|e| ScorerError::Io(e.to_string()))?;

@@ -89,17 +89,37 @@ neat_ai_rebase --champion <FILE> --enhancements <FILE-OR-DIR> \
 | --- | --- | --- |
 | `--champion` | — | the **freshly fetched** current global champion; read, never written |
 | `--enhancements` | — | a bundle, a single enhancement, or a directory of either (read in file-name order) |
+| `--harvest-from` | — | take the enhancements from this creature instead of a bundle; for a producer that does not file bundles yet |
 | `--training-data` | — | the corpus the verdict is measured on, and the source of the corpus identity |
 | `--scorer` | — | the `rust_scorer` binary; not required with `--dry-run` |
 | `--output-dir` | — | where the three outputs are written |
 | `--scorer-arg` | — | extra argument passed verbatim to the scorer, repeatable (e.g. `--scorer-arg=--gpu=off`) |
 | `--min-improvement` | `1e-9` | score a candidate must beat the champion by |
 | `--max-candidates` | `8` | cap on constructed candidates, excluding the baseline; `0` = uncapped |
+| `--screen-sample-rate` | off | screen each enhancement on a sub-sample first and carry forward only what beats the champion alone |
+| `--screen-held-out` | `true` | re-screen survivors on a second stratum and keep the intersection |
 | `--dry-run` | off | build and validate candidates without scoring or emitting |
 
 > **Fetch the champion immediately before running.** Rebase loads it once and
 > never re-reads it. Handing it a champion that is already stale reintroduces
 > the race it exists to remove.
+
+### Screening
+
+Scoring is the expensive part, and most enhancements do not earn their place.
+Measured on a live fleet, of one donor's 13 patches two improved the champion
+and eleven made it worse, and every cumulative prefix was worse than the best
+single it contained.
+
+`--screen-sample-rate 0.05` scores each enhancement alone on a sub-sample and
+carries forward only the winners; `--screen-held-out` then confirms them on a
+different stratum of the same size and keeps the intersection. On production
+creatures that narrows 11 patches to 3 before the corpus is touched.
+
+The screen only ever *narrows* what is scored authoritatively. It cannot
+promote anything — a sampled mode is refused as a verdict — and selecting on
+one stratum without the held-out confirmation is a trap; see
+[`docs/rebase-protocol.md`](docs/rebase-protocol.md).
 
 ### Outputs and exit codes
 
