@@ -2,11 +2,15 @@
 
 **Rebase the improvement, don't replace the champion.**
 
-NEAT-AI-Rebase is an experimental Rust project for preserving useful discoveries made by independent NEAT-AI optimisation processes when the global fittest creature changes while they are working.
+NEAT-AI-Rebase preserves useful discoveries made by independent NEAT-AI
+optimisation processes when the global fittest creature changes while they are
+working.
 
-A long-running optimiser may start from creature **A**, discover an improvement **Δ**, and finish after the fleet has already evolved to creature **B**. Publishing `A + Δ` can accidentally discard improvements accumulated in `B`.
+A long-running optimiser may start from creature **A**, discover an improvement
+**Δ**, and finish after the fleet has already evolved to creature **B**.
+Publishing `A + Δ` accidentally discards the improvements accumulated in **B**.
 
-Rebase instead treats the discovered change as the valuable artefact:
+Rebase treats the discovered change as the valuable artefact:
 
 ```text
 A ── optimiser ──▶ A + Δ
@@ -18,64 +22,170 @@ A ── optimiser ──▶ A + Δ
                                                 └─ authoritative scorer decides
 ```
 
-The scorer remains the final authority. A rebased candidate is never assumed to be better merely because the original change was successful.
+The scorer remains the final authority. A rebased candidate is never assumed to
+be better merely because the original change was successful.
 
-## Goals
+## Status
 
-- Preserve compatible improvements discovered concurrently by different optimisation methods.
-- Reapply semantic enhancements to the latest global champion rather than publishing stale descendants.
-- Keep replay/rebase idempotent where possible: if an enhancement is already present, applying it again should be a no-op.
-- Generate competing candidates when replay semantics are ambiguous, and let `NEAT-AI-scorer` decide.
-- Fail closed on incompatible creatures, stale corpus identity, malformed enhancements, or scorer disagreement.
-- Keep the mechanism generic. NEAT-AI-Rebase is not tied to any particular application domain.
+The mechanism is implemented and tested end to end against a scripted scorer:
+the v1 enhancement contract, the Forests graft adapter, the Ockham removal
+adapter, the candidate-cohort engine, the authoritative scorer gate, and the
+CLI. `rebase/tests/race_conditions.rs` reproduces the races the project exists
+to survive.
 
-## Initial scope
+Wiring the producers up — NEAT-AI-Forests and NEAT-AI-Ockham calling Rebase at
+population re-entry — is the next step, and is deliberately separate: it
+changes two running optimisers, so it lands behind their own feature switches
+with their own evidence. [`docs/integration.md`](docs/integration.md) is the
+checklist for it.
 
-Version 1 deliberately starts with enhancement types whose semantics are clear:
+## Quick start
 
-1. **NEAT-AI-Forests grafts** — portable patches described in terms of inputs, output and correction tree.
-2. **NEAT-AI-Ockham removals** — neuron UUID based removals that can be replayed only while the UUID is still present.
+Rebase is a Rust workspace that depends on the sibling
+[NEAT-AI-core](https://github.com/stSoftwareAU/NEAT-AI-core) checkout and
+invokes the [NEAT-AI-scorer](https://github.com/stSoftwareAU/NEAT-AI-scorer)
+binary (`rust_scorer`) as the judge — the same layout as NEAT-AI-Forests and
+NEAT-AI-Ockham:
 
-Weight/bias/squash modifications may follow later once their rebase semantics are explicit and scorer-tested.
+```text
+parent/
+├── NEAT-AI-core/      # path dependency: ../../NEAT-AI-core/neat-core
+├── NEAT-AI-scorer/    # build it: cargo build --release  →  target/release/rust_scorer
+└── NEAT-AI-Rebase/
+```
 
-## Proposed flow
+```bash
+cargo build --release
 
-1. Optimiser records the checksum and authoritative score of its opening creature.
-2. Each accepted local improvement is recorded as a portable `Enhancement` rather than only as a resulting creature.
-3. At population re-entry time, fetch the current global champion again.
-4. Detect enhancements already present and skip them.
-5. Apply the remaining enhancement(s) to the current champion.
-6. Build a small candidate cohort, including useful prefixes/combinations when appropriate.
-7. Score the current champion and all candidates together with `NEAT-AI-scorer`.
-8. Emit a population candidate only when the scorer confirms a real improvement over the current champion.
+./target/release/neat_ai_rebase \
+  --champion champion.json \
+  --enhancements bundle.json \
+  --training-data training/ \
+  --scorer ../NEAT-AI-scorer/target/release/rust_scorer \
+  --output-dir runs/first
+```
+
+One command runs everything CI runs:
+
+```bash
+./quality.sh
+```
+
+Two examples build runnable fixtures without a real corpus or champion:
+`cargo run --example print_bundle` prints the documented enhancement JSON, and
+`cargo run --example make_fixture -- <dir>` writes a champion and a bundle for
+a manual end-to-end run against `<dir>/training`.
+
+### Command line
+
+```text
+neat_ai_rebase --champion <FILE> --enhancements <FILE-OR-DIR> \
+               --training-data <DIR> --output-dir <DIR> \
+               [--scorer <PATH>] [--scorer-arg <ARG>]... \
+               [--min-improvement <DELTA>] [--max-candidates <N>] [--dry-run]
+```
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--champion` | — | the **freshly fetched** current global champion; read, never written |
+| `--enhancements` | — | a bundle, a single enhancement, or a directory of either (read in file-name order) |
+| `--training-data` | — | the corpus the verdict is measured on, and the source of the corpus identity |
+| `--scorer` | — | the `rust_scorer` binary; not required with `--dry-run` |
+| `--output-dir` | — | where the three outputs are written |
+| `--scorer-arg` | — | extra argument passed verbatim to the scorer, repeatable (e.g. `--scorer-arg=--gpu=off`) |
+| `--min-improvement` | `1e-9` | score a candidate must beat the champion by |
+| `--max-candidates` | `8` | cap on constructed candidates, excluding the baseline; `0` = uncapped |
+| `--dry-run` | off | build and validate candidates without scoring or emitting |
+
+> **Fetch the champion immediately before running.** Rebase loads it once and
+> never re-reads it. Handing it a champion that is already stale reintroduces
+> the race it exists to remove.
+
+### Outputs and exit codes
+
+| Output | Written when |
+| --- | --- |
+| `population-candidate.json` | **only** when the scorer confirmed an improvement over the champion |
+| `rebase.json` | always — the full summary, verdict included |
+| `experiments.jsonl` | always — append-only journal for unattended diagnostics |
+| `scoring/` | always — the creature files handed to the scorer, one per cohort member, kept for diagnosis |
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | a verified improvement was emitted (with `--dry-run`: candidates built and validated) |
+| `3` | no improvement, or nothing left to do — **a successful, non-destructive outcome** |
+| `4` | incompatible input: nothing could be attempted |
+| `1` | operational or scorer failure |
+
+## Scope
+
+Version 1 implements the enhancement types whose semantics are clear:
+
+1. **NEAT-AI-Forests grafts** — portable patches described by inputs, output
+   and correction tree.
+2. **NEAT-AI-Ockham removals** — neuron-UUID removals with the strategy needed
+   to reproduce them.
+
+Weight, bias and squash modifications are deliberately absent: their rebase
+semantics are not explicit yet, and guessing would produce candidates nobody
+can reason about.
 
 ## Design principles
 
 ### Semantic changes, not raw JSON diffs
 
-Rebase should understand what an optimiser changed. A raw structural diff is fragile when the target creature has independently evolved.
+Rebase understands what an optimiser changed. A raw structural diff is fragile
+when the target creature has independently evolved.
 
 ### Idempotence beats host exclusion
 
-Rebase should not need special logic to avoid the creature that a host just published. If the latest champion already contains an enhancement, the enhancement should simply be recognised as present.
+Rebase needs no special logic to avoid the creature a host just published. If
+the latest champion already contains an enhancement, it is recognised as
+present — see [`docs/idempotence.md`](docs/idempotence.md).
 
 ### No assumption of additivity
 
-Two changes that each helped separately may interact badly. Candidate combinations must be scored, not trusted.
+Two changes that each helped separately may interact badly. Combinations are
+scored, not trusted.
 
-### Scorer has the final say
+### The scorer has the final say
 
-Search heuristics, previous wins and provenance are evidence. Only an authoritative score determines population re-entry.
+Search heuristics, previous wins and provenance are evidence. Only an
+authoritative score determines population re-entry.
+
+## Documentation
+
+| Document | What it covers |
+| --- | --- |
+| [`docs/enhancement-format.md`](docs/enhancement-format.md) | the v1 envelope, both payloads, and which fields form the identity |
+| [`docs/rebase-protocol.md`](docs/rebase-protocol.md) | ancestor → bundle → fresh champion → cohort → verdict |
+| [`docs/idempotence.md`](docs/idempotence.md) | how producers mark enhancements and how duplicate application is avoided |
+| [`docs/failure-model.md`](docs/failure-model.md) | every fail-closed case, and what is safe to retry |
+| [`docs/integration.md`](docs/integration.md) | the producer checklist, with worked Forest and Ockham examples |
 
 ## Relationship to other projects
 
-- [NEAT-AI-Forests](https://github.com/stSoftwareAU/NEAT-AI-Forests) discovers portable residual-correction grafts.
-- [NEAT-AI-Ockham](https://github.com/stSoftwareAU/NEAT-AI-Ockham) discovers removable structure.
-- [NEAT-AI-scorer](https://github.com/stSoftwareAU/NEAT-AI-scorer) is the authoritative judge.
-- [NEAT-AI-core](https://github.com/stSoftwareAU/NEAT-AI-core) supplies the shared creature representation and validation logic.
+- [NEAT-AI-Forests](https://github.com/stSoftwareAU/NEAT-AI-Forests) discovers
+  portable residual-correction grafts.
+- [NEAT-AI-Ockham](https://github.com/stSoftwareAU/NEAT-AI-Ockham) discovers
+  removable structure.
+- [NEAT-AI-scorer](https://github.com/stSoftwareAU/NEAT-AI-scorer) is the
+  authoritative judge.
+- [NEAT-AI-core](https://github.com/stSoftwareAU/NEAT-AI-core) supplies the
+  shared creature representation, the canonical `IF` graft helper and the
+  validation contract.
 
-## Status
+## Application scope
 
-Early experiment. The GitHub issues are the implementation plan.
+NEAT-AI and its public `NEAT-AI-*` subprojects are intentionally
+**application-agnostic**. They provide general neural-network evolution,
+inference, scoring and optimisation techniques; specific downstream
+applications belong outside these public libraries. Rebase carries no
+domain-specific dependencies or terminology, and its enhancement payloads
+describe indices and UUIDs rather than anything about a particular problem.
 
-The immediate target is a minimal end-to-end Forests rebase: capture an accepted Forest patch, fetch a newer champion, graft the patch onto it, score champion versus rebased candidate, and emit the winner safely.
+## Pinned Rust toolchain
+
+`rust-toolchain.toml` pins the channel so `rustup` resolves the same
+`rustc`/`clippy`/`rustfmt` locally and in CI. The gate is `-D warnings`, so an
+unpinned stable could break the build with no code change.
