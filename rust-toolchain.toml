@@ -1,0 +1,10 @@
+# Pinned Rust toolchain for reproducible local + CI builds.
+#
+# The gate is `-D warnings` plus specific clippy lints, so a fresh stable
+# release can break CI with no code change — and contributors could not
+# reproduce it locally. Pinning a concrete channel makes `rustup` (used by both
+# `./quality.sh` and CI) resolve the same `rustc`/`clippy`/`rustfmt`
+# everywhere. Kept in step with NEAT-AI-core / Forests / Ockham / scorer.
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]

@@ -1,0 +1,12 @@
+# Last-handled neat-core version.
+#
+# Rebase consumes neat-core via an unpinned `path` dependency that tracks head.
+# CI (`scripts/check-neat-core-version.sh`) fails when the sibling neat-core
+# presents a breaking bump above this baseline — pre-1.0 a higher minor, or any
+# higher major — forcing a deliberate upgrade. Clear the gate by updating
+# `rebase` for the breaking change and bumping this version to match neat-core.
+#
+# 0.10.6 is the first version Rebase was written against: it keys synapse
+# uniqueness by (fromUUID, toUUID, type), which is what the Forest adapter's
+# `typed-pair` correction into an `IF` anchor emits.
+0.10.6

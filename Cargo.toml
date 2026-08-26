@@ -1,3 +1,27 @@
+# Single-crate workspace. `neat-core` comes from the sibling NEAT-AI-core
+# checkout (see `rebase/Cargo.toml`); NEAT-AI-scorer is invoked as the
+# `rust_scorer` binary, which is how every other NEAT-AI experiment consumes it.
 [workspace]
 members = ["rebase"]
 resolver = "2"
+
+# Dev builds: compile as fast as possible. `line-tables-only` keeps panic
+# file:line without full DWARF; opt-level and incremental stay at Cargo
+# defaults. Mirrors NEAT-AI-core / NEAT-AI-Forests / NEAT-AI-Ockham.
+[profile.dev]
+debug = "line-tables-only"
+
+# Release builds: most optimised artefact; compile time is irrelevant.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused = { level = "deny", priority = -1 }
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+collapsible_if = "deny"
+filter_next = "deny"

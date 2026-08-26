@@ -1,0 +1,24 @@
+# Ignore invisible
+.*
+*~
+!.gitignore
+!.gitattributes
+!.github/
+!.codespellrc
+!.markdownlint.json
+!.markdownlintignore
+
+/target/
+**/*.rs.bk
+.DS_Store
+
+# NEAT-AI-core lives as a sibling clone. CI checks it out inside the workspace
+# as `NEAT-AI-core/` for Cargo path resolution; it must never be committed here.
+/NEAT-AI-core/
+/NEAT-AI-core
+
+# Rebase runtime outputs — never commit run artefacts.
+/runs/
+/population-candidate.json
+/rebase.json
+/experiments.jsonl

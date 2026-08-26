@@ -1,0 +1,160 @@
+# Quality gate for NEAT-AI-Rebase (Issue #10).
+#
+# Deliberately smaller than the Forests/Ockham fleet of workflows: one job that
+# runs the three checks the issue asks for — `cargo fmt --check`,
+# `cargo clippy --all-targets --all-features -- -D warnings` and
+# `cargo test --all` — plus the licence/advisory audit and a doc build, on
+# every PR and every push to Develop.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - Develop
+  push:
+    branches:
+      - Develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  quality:
+    name: Quality Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUSTFLAGS: "-D warnings"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          persist-credentials: false
+
+      - name: Set up NEAT-AI-core sibling (path dependency for neat-core)
+        uses: ./.github/actions/setup-neat-core
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable, frozen 2026-05-18
+        with:
+          # `rust-toolchain.toml` pins the channel; the action installs it and
+          # the components the gate needs.
+          toolchain: "1.98.0"
+          components: rustfmt, clippy
+
+      - name: Cache dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Gate on an unhandled breaking neat-core bump
+        run: ./scripts/check-neat-core-version.sh
+
+      - name: Install cargo-deny (prebuilt binary)
+        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912  # v2.81.10
+        with:
+          tool: cargo-deny
+
+      - name: cargo deny
+        run: cargo deny check
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run linter
+        run: |
+          set -euo pipefail
+          cargo clippy --workspace --all-targets --all-features -- \
+            -D warnings \
+            -D clippy::filter_next \
+            -D clippy::collapsible_if
+
+      - name: Build workspace
+        run: cargo build --workspace
+
+      - name: Run tests
+        run: cargo test --workspace --all-features --verbose
+
+      - name: Build documentation
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+
+  shell-checks:
+    name: Shell Script Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          persist-credentials: false
+
+      - name: Check bash script syntax
+        run: |
+          set -euo pipefail
+          while IFS= read -r script; do
+            bash -n "$script"
+            echo "OK $script"
+          done < <(find . -name "*.sh" -not -path "./target/*" -not -path "./.git/*")
+
+      - name: Run ShellCheck
+        env:
+          SHELLCHECK_OPTS: -s bash
+        run: |
+          set -euo pipefail
+          shellcheck --version
+          scripts=()
+          while IFS= read -r script; do
+            scripts+=("$script")
+          done < <(find . -name "*.sh" -not -path "./target/*" -not -path "./.git/*")
+          if [ ${#scripts[@]} -eq 0 ]; then
+            echo "No shell scripts found — nothing to lint"
+            exit 0
+          fi
+          shellcheck --severity=warning "${scripts[@]}"
+
+  ci-required:
+    name: CI Required Checks
+    needs: [quality, shell-checks]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify all gating jobs succeeded
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          SHELL_CHECKS_RESULT: ${{ needs.shell-checks.result }}
+        run: |
+          set -euo pipefail
+          fail=0
+          check() {
+            local name="$1" result="$2"
+            if [[ "$result" == "success" || "$result" == "skipped" ]]; then
+              echo "OK   $name: $result"
+            else
+              echo "FAIL $name: $result" >&2
+              fail=1
+            fi
+          }
+          check "quality"      "$QUALITY_RESULT"
+          check "shell-checks" "$SHELL_CHECKS_RESULT"
+          if [[ "$fail" -ne 0 ]]; then
+            echo "One or more gating jobs did not succeed — blocking merge." >&2
+            exit 1
+          fi
+          echo "All gating jobs succeeded — safe to merge."

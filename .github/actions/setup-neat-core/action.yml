@@ -1,0 +1,31 @@
+name: Set up NEAT-AI-core sibling
+description: >-
+  Check out stSoftwareAU/NEAT-AI-core into the workspace and symlink it to the
+  sibling path Cargo expects, so the `rebase/Cargo.toml`
+  `../../NEAT-AI-core/neat-core` path dependency resolves on the runner.
+  Single source of truth for the checkout + symlink block.
+
+inputs:
+  ref:
+    description: Git ref of stSoftwareAU/NEAT-AI-core to check out.
+    required: false
+    default: Develop
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout NEAT-AI-core (path dependency for neat-core)
+      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      with:
+        repository: stSoftwareAU/NEAT-AI-core
+        ref: ${{ inputs.ref }}
+        path: NEAT-AI-core
+        persist-credentials: false
+
+    - name: Link NEAT-AI-core sibling path expected by Cargo
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ ! -e "$GITHUB_WORKSPACE/../NEAT-AI-core" ]; then
+          ln -s "$GITHUB_WORKSPACE/NEAT-AI-core" "$GITHUB_WORKSPACE/../NEAT-AI-core"
+        fi

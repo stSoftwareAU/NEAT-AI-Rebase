@@ -1,0 +1,10 @@
+# CODEOWNERS — review governance for NEAT-AI-Rebase
+#
+# Default owner — every change requests a maintainer review unless a more
+# specific rule below overrides it. CODEOWNERS uses last-match-wins, so the
+# catch-all goes first.
+*                       @stSoftwareAU/developers
+
+# CI / workflow changes require a maintainer review.
+/.github/               @stSoftwareAU/developers
+/.github/workflows/     @stSoftwareAU/developers
