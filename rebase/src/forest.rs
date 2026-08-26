@@ -254,6 +254,32 @@ fn graft(
     })
 }
 
+/// The neuron a graft on `output` would attach its correction to, and the gain
+/// from there to the output.
+///
+/// The same walk [`apply`] performs, exposed so a caller can report where its
+/// corrections land — on a clamped champion that is a hidden neuron, not the
+/// output — and so [`crate::harvest`] can map a grafted root back to the output
+/// index it corrects.
+///
+/// # Errors
+///
+/// The [`Incompatibility`] the walk fails with; grafting would fail the same way.
+pub fn graft_anchor(
+    creature: &CreatureExport,
+    output: usize,
+) -> Result<(String, f64), Incompatibility> {
+    if output >= creature.output {
+        return Err(refuse(format!(
+            "output {output} is beyond the creature's {} outputs",
+            creature.output
+        )));
+    }
+    let uuid = output_uuid(creature, output).map_err(|e| refuse(e.to_string()))?;
+    let anchor = resolve_anchor(creature, &uuid)?;
+    Ok((anchor.uuid, anchor.gain))
+}
+
 /// Where a correction can enter the creature, and what it is worth at the
 /// output once it does.
 struct Anchor {

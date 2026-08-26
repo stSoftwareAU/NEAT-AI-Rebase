@@ -75,6 +75,7 @@ pub mod engine;
 pub mod enhancement;
 pub mod fixtures;
 pub mod forest;
+pub mod harvest;
 pub mod journal;
 pub mod ockham;
 pub mod patch;
