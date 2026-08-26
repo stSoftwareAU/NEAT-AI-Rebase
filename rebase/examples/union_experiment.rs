@@ -66,6 +66,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // How far below the base a donor may score and still be worth harvesting.
     let mut donor_window: Option<f64> = None;
     let mut max_donors: Option<usize> = None;
+    // Screen each stranded patch ALONE, in batches, instead of bundling them.
+    // Blind bundling loses; the question this answers is whether any
+    // individual stranded discovery still helps the champion.
+    let mut batch: Option<usize> = None;
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < argv.len() {
@@ -81,6 +85,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--emit" => emit = Some(PathBuf::from(value)),
             "--donor-window" => donor_window = value.parse().ok(),
             "--max-donors" => max_donors = value.parse().ok(),
+            "--batch" => batch = value.parse().ok(),
             other => {
                 eprintln!("unknown argument `{other}`");
                 std::process::exit(2);
@@ -243,8 +248,108 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         e.meta.improved_score = 0.0;
     }
 
-    // 4. Build the cohort. `bundle` is ordered first, so a tight cap keeps the
-    //    consolidation and drops the diagnostic singles.
+    // 4a. Per-patch screening. One creature per patch is far too much JSON to
+    //     stage at once for 90 patches (~550 MB, and the scorer parses all of
+    //     it), so screen in batches and keep only what wins on its own.
+    if let Some(size) = batch {
+        let mode = match sample_rate {
+            Some(rate) if rate < 1.0 => ScorerMode::Sample { rate, phase: 0 },
+            _ => ScorerMode::Full,
+        };
+        let scorer = ExternalScorer::with_args(&scorer_bin, vec!["--gpu=off".into()]);
+        println!(
+            "\nscreening  {} patches individually in batches of {size}, {} pass",
+            enhancements.len(),
+            mode.label()
+        );
+        let mut winners: Vec<(f64, String)> = Vec::new();
+        let mut screened = 0usize;
+        for (batch_index, chunk) in enhancements.chunks(size).enumerate() {
+            let staging = out.join(format!("screen-{batch_index:03}"));
+            if staging.exists() {
+                std::fs::remove_dir_all(&staging)?;
+            }
+            std::fs::create_dir_all(&staging)?;
+            // One cohort per patch: a single-enhancement rebase has exactly one
+            // candidate, which is the patch on its own.
+            let mut labels: Vec<(String, String)> = Vec::new();
+            std::fs::write(
+                staging.join(format!("{BASELINE}.json")),
+                creature_to_json(&base.creature)?,
+            )?;
+            for (i, e) in chunk.iter().enumerate() {
+                let one = rebase(&RebaseRequest {
+                    champion: &base.creature,
+                    enhancements: std::slice::from_ref(e),
+                    corpus_identity: &corpus.identity,
+                    max_candidates: 1,
+                })?;
+                let Some(candidate) = one.candidates().next() else {
+                    continue;
+                };
+                let label = format!("p{i:03}");
+                std::fs::write(
+                    staging.join(format!("{label}.json")),
+                    creature_to_json(&candidate.creature)?,
+                )?;
+                labels.push((label, e.meta.id.clone()));
+            }
+            if labels.is_empty() {
+                continue;
+            }
+            let results = scorer.score_directory(&staging, &training, mode)?;
+            let b = results.get(BASELINE).ok_or("no baseline in batch")?.score;
+            let mut found = 0usize;
+            for (label, id) in &labels {
+                if let Some(r) = results.get(label)
+                    && r.score > b
+                {
+                    winners.push((r.score - b, id.clone()));
+                    found += 1;
+                }
+            }
+            screened += labels.len();
+            println!(
+                "  batch {batch_index:>2}: {:>3} screened, {found} beat the base",
+                labels.len()
+            );
+            // Staging for a batch is ~120 MB; do not keep 5 of them around.
+            let _ = std::fs::remove_dir_all(&staging);
+        }
+        winners.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        println!(
+            "\nRESULT     {} of {screened} stranded patches improve the champion on their own",
+            winners.len()
+        );
+        for (delta, id) in winners.iter().take(20) {
+            println!("             {id}  {delta:+.3e}");
+        }
+        if !winners.is_empty() {
+            println!(
+                "\n--only {}",
+                winners
+                    .iter()
+                    .map(|(_, id)| id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+        }
+        let path = out.join("screen.json");
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&serde_json::json!({
+                "experiment": "population-union-singles",
+                "base": name(&base.path),
+                "screened": screened,
+                "winners": winners.iter().map(|(d, id)| serde_json::json!({"id": id, "delta": d})).collect::<Vec<_>>(),
+            }))?,
+        )?;
+        println!("           wrote {}", path.display());
+        return Ok(());
+    }
+
+    // 4b. Build the cohort. `bundle` is ordered first, so a tight cap keeps the
+    //     consolidation and drops the diagnostic singles.
     let outcome = rebase(&RebaseRequest {
         champion: &base.creature,
         enhancements: &enhancements,
