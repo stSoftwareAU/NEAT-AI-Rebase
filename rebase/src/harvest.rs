@@ -144,6 +144,35 @@ pub fn harvest_all(source: &CreatureExport) -> Harvested {
     harvest_ids(source, patch_ids(source).into_iter())
 }
 
+/// Recover only the named patches from `source`.
+///
+/// For consolidating a whole population: a discovery that lost the fitness
+/// race still sits in the creature that made it, and the fittest creature is
+/// the place to try it. An id `source` does not carry is skipped with a reason
+/// rather than silently ignored — the caller chose it deliberately.
+pub fn harvest_selected<'a>(
+    source: &CreatureExport,
+    ids: impl IntoIterator<Item = &'a str>,
+) -> Harvested {
+    let present = patch_ids(source);
+    let mut wanted = Vec::new();
+    let mut out = Harvested::default();
+    for id in ids {
+        if present.contains(id) {
+            wanted.push(id.to_string());
+        } else {
+            out.skipped.push(HarvestSkip {
+                id: id.to_string(),
+                reason: "not carried by this source".into(),
+            });
+        }
+    }
+    let found = harvest_ids(source, wanted.into_iter());
+    out.patches.extend(found.patches);
+    out.skipped.extend(found.skipped);
+    out
+}
+
 fn harvest_ids(source: &CreatureExport, ids: impl Iterator<Item = String>) -> Harvested {
     let index = Index::of(source);
     let mut out = Harvested::default();
@@ -554,6 +583,25 @@ mod tests {
         assert_eq!(meta.corpus_identity, "corpus-x");
         assert_eq!(meta.input_count, grafted.input);
         assert!(enhancements[0].id_is_consistent());
+    }
+
+    #[test]
+    fn selected_harvest_takes_only_what_was_asked_for() {
+        let base = linear_hidden_creature(2.0);
+        let a = stump(0, 0.1, 0.0, 0.05);
+        let b = stump(1, 0.5, 0.0, 0.25);
+        let both = graft(&graft(&base, &a), &b);
+
+        let picked = harvest_selected(&both, [a.id().as_str()]);
+        assert_eq!(picked.patches.len(), 1);
+        assert_eq!(picked.patches[0].id(), a.id());
+        assert!(picked.skipped.is_empty());
+
+        // An id this source does not carry is reported, not ignored.
+        let missing = harvest_selected(&both, ["0000000000000000"]);
+        assert!(missing.patches.is_empty());
+        assert_eq!(missing.skipped.len(), 1);
+        assert!(missing.skipped[0].reason.contains("not carried"));
     }
 
     #[test]
