@@ -255,13 +255,13 @@ mod tests {
                 {"name": "forests", "value": "🌳 Forests · 4 accepts"},
             ]),
         );
-        if let Some(Value::Array(neurons)) = v.get_mut("neurons") {
-            if let Value::Object(o) = &mut neurons[0] {
-                o.insert(
-                    "tags".into(),
-                    serde_json::json!([{"name": "origin", "value": "evolution"}]),
-                );
-            }
+        if let Some(Value::Array(neurons)) = v.get_mut("neurons")
+            && let Value::Object(o) = &mut neurons[0]
+        {
+            o.insert(
+                "tags".into(),
+                serde_json::json!([{"name": "origin", "value": "evolution"}]),
+            );
         }
         serde_json::to_string_pretty(&Value::Object(v)).unwrap()
     }
