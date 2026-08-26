@@ -80,6 +80,7 @@ pub mod journal;
 pub mod ockham;
 pub mod patch;
 pub mod scorer;
+pub mod tags;
 
 pub use adapter::Application;
 pub use compat::{Incompatibility, Target};
