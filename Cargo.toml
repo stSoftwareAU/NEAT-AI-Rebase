@@ -1,0 +1,3 @@
+[workspace]
+members = ["rebase"]
+resolver = "2"
