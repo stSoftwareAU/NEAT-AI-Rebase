@@ -125,6 +125,14 @@ impl Candidate {
 /// Scorer file stem reserved for the champion.
 pub const BASELINE_LABEL: &str = "baseline";
 
+/// Scorer file stem reserved for the producer's own descendant.
+///
+/// It is scored beside the cohort so one authoritative call answers the
+/// question the producer actually has — "was publishing my own creature worth
+/// more than rebasing my discoveries?" — but it is never a candidate, because
+/// it descends from an ancestor the champion has already moved past.
+pub const REFERENCE_LABEL: &str = "source";
+
 /// Everything the engine produced.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RebaseOutcome {
@@ -141,6 +149,10 @@ pub struct RebaseOutcome {
     /// that applied on its own can still fail inside a combination, and that
     /// must not corrupt the shorter prefixes.
     pub combination_failures: Vec<String>,
+    /// The producer's own descendant, scored for comparison only. Set by the
+    /// caller after [`rebase`]; it takes no part in building the cohort and
+    /// can never win.
+    pub reference: Option<Candidate>,
 }
 
 impl RebaseOutcome {
@@ -290,6 +302,7 @@ pub fn rebase(request: &RebaseRequest<'_>) -> Result<RebaseOutcome, RebaseError>
         cohort,
         dropped_for_cap,
         combination_failures,
+        reference: None,
     })
 }
 

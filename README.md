@@ -79,8 +79,9 @@ a manual end-to-end run against `<dir>/training`.
 ### Command line
 
 ```text
-neat_ai_rebase --champion <FILE> --enhancements <FILE-OR-DIR> \
+neat_ai_rebase --champion <FILE> (--enhancements <FILE-OR-DIR> | --harvest-from <FILE>) \
                --training-data <DIR> --output-dir <DIR> \
+               [--harvest-base <FILE>] \
                [--scorer <PATH>] [--scorer-arg <ARG>]... \
                [--min-improvement <DELTA>] [--max-candidates <N>] [--dry-run]
 ```
@@ -89,6 +90,8 @@ neat_ai_rebase --champion <FILE> --enhancements <FILE-OR-DIR> \
 | --- | --- | --- |
 | `--champion` | — | the **freshly fetched** current global champion; read, never written |
 | `--enhancements` | — | a bundle, a single enhancement, or a directory of either (read in file-name order) |
+| `--harvest-from` | — | recover the enhancements from a creature that carries them, for a producer that files no bundle yet; also scored as `source` |
+| `--harvest-base` | — | the ancestor the harvested run opened on; only patches it does not also carry are recovered |
 | `--training-data` | — | the corpus the verdict is measured on, and the source of the corpus identity |
 | `--scorer` | — | the `rust_scorer` binary; not required with `--dry-run` |
 | `--output-dir` | — | where the three outputs are written |
@@ -101,14 +104,21 @@ neat_ai_rebase --champion <FILE> --enhancements <FILE-OR-DIR> \
 > never re-reads it. Handing it a champion that is already stale reintroduces
 > the race it exists to remove.
 
+Exactly one of `--enhancements` / `--harvest-from` is required. `--harvest-from`
+is the bridge for a producer that has not been taught to file bundles yet:
+a Forest graft names every neuron it appends after the patch that made it, and
+the id is a digest of the correction, so the patches can be read back out of the
+creature and are accepted only when they hash back to the id they were found
+under.
+
 ### Outputs and exit codes
 
 | Output | Written when |
 | --- | --- |
-| `population-candidate.json` | **only** when the scorer confirmed an improvement over the champion |
+| `population-candidate.json` | **only** when the scorer confirmed an improvement over the champion; carries the champion's tags plus a `rebase` tag naming both comparisons |
 | `rebase.json` | always — the full summary, verdict included |
 | `experiments.jsonl` | always — append-only journal for unattended diagnostics |
-| `scoring/` | always — the creature files handed to the scorer, one per cohort member, kept for diagnosis |
+| `scoring/` | always — the creature files handed to the scorer, one per cohort member plus `source.json` when `--harvest-from` was given, kept for diagnosis |
 
 | Exit code | Meaning |
 | --- | --- |

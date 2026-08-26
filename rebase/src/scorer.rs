@@ -316,6 +316,12 @@ pub struct Verdict {
     pub baseline: ScoreResult,
     /// Every candidate scored, best first.
     pub candidates: Vec<ScoredCandidate>,
+    /// The producer's own descendant, when one was supplied. Scored in the
+    /// same call as everything else and deliberately absent from `candidates`:
+    /// it is evidence about what publishing it would have cost, never
+    /// something this run may promote.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference: Option<ScoredCandidate>,
     /// The winner, when one beat the champion by more than the threshold.
     pub winner: Option<ScoredCandidate>,
     /// Minimum improvement required to declare a winner.
@@ -336,12 +342,17 @@ impl Verdict {
     }
 }
 
-/// Score the champion and the whole cohort in one authoritative pass, and
-/// return the verdict.
+/// Score the champion, the whole cohort and the producer's reference creature
+/// in one authoritative pass, and return the verdict.
 ///
 /// `staging_dir` is created if needed and filled with one JSON file per cohort
-/// member, named by its label. Nothing outside it is written, and neither the
-/// champion nor the enhancement files are touched.
+/// member plus `outcome.reference`, named by its label. Nothing outside it is
+/// written, and neither the champion nor the enhancement files are touched.
+///
+/// One call, so every number in the verdict comes from the same scorer, the
+/// same corpus and the same backend — including the reference, which is what
+/// makes "publishing my own descendant would have cost X" a measurement rather
+/// than an assertion.
 ///
 /// # Errors
 ///
@@ -395,11 +406,30 @@ pub fn judge(
         .filter(|c| c.delta > min_improvement)
         .cloned();
 
+    let reference = match &outcome.reference {
+        Some(reference) => {
+            let result = results
+                .get(&reference.label)
+                .ok_or_else(|| ScorerError::MissingCandidate(reference.label.clone()))?
+                .clone();
+            let delta = result.score - baseline.score;
+            Some(ScoredCandidate {
+                label: reference.label.clone(),
+                checksum: reference.checksum.clone(),
+                applied_ids: reference.applied_ids.clone(),
+                result,
+                delta,
+            })
+        }
+        None => None,
+    };
+
     Ok(Verdict {
         champion_checksum: outcome.champion_checksum.clone(),
         scorer_backend: baseline.gpu_backend.clone(),
         baseline,
         candidates,
+        reference,
         winner,
         min_improvement,
         mode: mode.label().to_string(),
@@ -410,7 +440,7 @@ pub fn judge(
 /// Write every cohort member into `dir` as `<label>.json`, re-checking the
 /// baseline's checksum on the way out.
 fn stage(outcome: &RebaseOutcome, dir: &Path) -> Result<(), ScorerError> {
-    for candidate in &outcome.cohort {
+    for candidate in outcome.cohort.iter().chain(outcome.reference.iter()) {
         let json = neat_core::creature_to_json(&candidate.creature)
             .map_err(|e| ScorerError::Io(e.to_string()))?;
         // The champion is what everything is measured against; if what lands

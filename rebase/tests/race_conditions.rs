@@ -439,7 +439,9 @@ fn the_cli_publishes_b_plus_delta_and_leaves_its_inputs_alone() {
     let output_dir = tmp.path().join("out");
     let cli = Cli {
         champion: champion_path.clone(),
-        enhancements: bundle_path.clone(),
+        enhancements: Some(bundle_path.clone()),
+        harvest_from: None,
+        harvest_base: None,
         training_data: training,
         scorer: None,
         output_dir: output_dir.clone(),

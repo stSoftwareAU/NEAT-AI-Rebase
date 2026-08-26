@@ -59,6 +59,31 @@ neat_ai_rebase \
 
 Or call the library directly — `rebase()` then `judge()`.
 
+### 4b. …or harvest, until step 2 is done
+
+Steps 1 and 2 are the right way round, and they are also a change to the
+producer's own code. Until that lands, a Forest producer can hand Rebase the
+creature it published instead of a bundle:
+
+```bash
+neat_ai_rebase \
+  --champion "$fresh_champion" \
+  --harvest-from "$this_run_descendant" \
+  --harvest-base "$the_creature_the_run_opened_on" \
+  --training-data "$corpus" \
+  --scorer "$rust_scorer" \
+  --output-dir "$run/rebase"
+```
+
+Only the patches the descendant carries and the base does not are recovered —
+this run's own discoveries, not the whole lineage's — and a reconstruction is
+accepted only when it hashes back to the id it was found under. The descendant
+is also scored beside the cohort as `source`, so the run's log can say what
+publishing it instead would have cost.
+
+Harvesting sees only what survived into the published creature. It is a bridge,
+not a replacement for filing enhancements as you accept them.
+
 ### 5. Publish only what Rebase emits
 
 Push `population-candidate.json`, and only that file, and only when it exists.

@@ -222,8 +222,15 @@ pub struct RebaseStamp<'a> {
 /// and how far it beat the creature whose discoveries it borrowed. The second
 /// is the one that says publishing that creature alone would have been a loss.
 pub fn rebase_message(stamp: &RebaseStamp<'_>) -> String {
+    // A run given no source creature has no second number to report. Say one
+    // less thing rather than print a comparison against nothing.
+    let versus_source = if stamp.source_score.is_finite() {
+        format!(", +{:.2e} vs source", stamp.score - stamp.source_score)
+    } else {
+        String::new()
+    };
     format!(
-        "🔀 Rebase · {} {} from {} · score: {:.6} (+{:.2e} vs champion, +{:.2e} vs source)",
+        "🔀 Rebase · {} {} from {} · score: {:.6} (+{:.2e} vs champion{})",
         stamp.applied,
         if stamp.applied == 1 {
             "enhancement"
@@ -233,7 +240,7 @@ pub fn rebase_message(stamp: &RebaseStamp<'_>) -> String {
         stamp.source,
         stamp.score,
         stamp.score - stamp.champion_score,
-        stamp.score - stamp.source_score,
+        versus_source,
     )
 }
 

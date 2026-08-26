@@ -5,6 +5,21 @@
 //!                --training-data <dir> --scorer <path> --output-dir <dir>
 //! ```
 //!
+//! ## Producers that do not file bundles yet
+//!
+//! ```text
+//! neat_ai_rebase --champion <fresh> --harvest-from <descendant> \
+//!                --harvest-base <opening ancestor> \
+//!                --training-data <dir> --scorer <path> --output-dir <dir>
+//! ```
+//!
+//! `--harvest-from` recovers the enhancements out of the creature the producer
+//! published, and scores that creature beside the cohort as `source` so one
+//! call answers both "is the rebase worth publishing?" and "what would
+//! publishing the descendant instead have cost?". The descendant is never a
+//! candidate: it descends from an ancestor the champion has moved past, which
+//! is the whole reason its discoveries had to be rebased.
+//!
 //! ## The one thing a caller must get right
 //!
 //! **Fetch the champion immediately before invoking.** Rebase loads it once,
@@ -16,7 +31,7 @@
 //!
 //! | File | Written when |
 //! | --- | --- |
-//! | `population-candidate.json` | **only** when the scorer confirmed an improvement over the champion |
+//! | `population-candidate.json` | **only** when the scorer confirmed an improvement over the champion; carries the champion's tags plus a `rebase` stamp |
 //! | `rebase.json` | always — the full summary, verdict included |
 //! | `experiments.jsonl` | always — append-only journal for unattended diagnostics |
 //! | `scoring/` | always — the creature files handed to the scorer, kept for diagnosis |
@@ -44,11 +59,15 @@ use neat_core::{CreatureExport, creature_to_json, parse_creature_json};
 use serde::{Deserialize, Serialize};
 
 use crate::corpus::{CorpusInfo, corpus_info};
-use crate::creature::{sha256_hex, validate_source_creature};
-use crate::engine::{EnhancementOutcome, RebaseOutcome, RebaseRequest, rebase};
+use crate::creature::{creature_checksum, sha256_hex, validate_source_creature};
+use crate::engine::{
+    Candidate, EnhancementOutcome, REFERENCE_LABEL, RebaseOutcome, RebaseRequest, rebase,
+};
 use crate::enhancement::{Enhancement, EnhancementBundle};
+use crate::harvest::{harvest_all, harvest_delta};
 use crate::journal::{Journal, Record};
 use crate::scorer::{DirectoryScorer, ExternalScorer, ScorerMode, Verdict, judge};
+use crate::tags::{CreatureMeta, RebaseStamp};
 
 /// Exit code: a verified improvement was emitted.
 pub const EXIT_IMPROVED: i32 = 0;
@@ -72,7 +91,12 @@ the start, and never re-reads it. Handing it a champion that is already stale re
 race it exists to remove.\n\n\
 Exit codes: 0 improvement emitted (or, with --dry-run, candidates validated); 3 no improvement \
 or nothing to do (a successful, non-destructive outcome); 4 incompatible input; 1 operational \
-or scorer failure."
+or scorer failure.",
+    group(
+        clap::ArgGroup::new("enhancement-source")
+            .required(true)
+            .args(["enhancements", "harvest_from"])
+    )
 )]
 pub struct Cli {
     /// The **freshly fetched** current global champion. Never written to.
@@ -82,7 +106,22 @@ pub struct Cli {
     /// An enhancement bundle, a single enhancement, or a directory of either.
     /// Directory members are read in file-name order. Never written to.
     #[arg(long, value_name = "FILE-OR-DIR")]
-    pub enhancements: PathBuf,
+    pub enhancements: Option<PathBuf>,
+
+    /// Recover the enhancements from a creature that already carries them,
+    /// instead of reading a filed bundle. Use this for a producer that does
+    /// not emit bundles yet: a Forest graft is self-identifying, so the
+    /// patches can be read back out of the creature it published. The same
+    /// creature is scored beside the cohort as `source`. Never written to.
+    #[arg(long = "harvest-from", value_name = "FILE")]
+    pub harvest_from: Option<PathBuf>,
+
+    /// The ancestor the harvested run opened on. Only the patches
+    /// `--harvest-from` carries and this creature does not are recovered —
+    /// that is the run's own discoveries, without re-filing what the lineage
+    /// already had. Omit to harvest every patch the creature carries.
+    #[arg(long = "harvest-base", value_name = "FILE", requires = "harvest_from")]
+    pub harvest_base: Option<PathBuf>,
 
     /// Directory of `.bin` training data — the corpus the verdict is measured
     /// on, and the source of the corpus identity every enhancement is checked
@@ -162,6 +201,18 @@ pub struct RebaseSummary {
     pub dry_run: bool,
     /// Producer of the bundle.
     pub producer: String,
+    /// Where the enhancements came from: `bundle` or `harvest`.
+    #[serde(default)]
+    pub source: String,
+    /// Patch ids found in the harvested creature but not recoverable from it,
+    /// with the reason. Never silent: a patch that cannot be rebuilt is a
+    /// discovery this run could not carry across.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub harvest_skipped: Vec<String>,
+    /// Why the producer's own descendant was not scored, when it was supplied
+    /// and had to be left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_skipped: Option<String>,
     /// Checksum the producer recorded for its opening creature — the stale
     /// ancestor the enhancements were discovered on.
     pub opening_checksum: String,
@@ -182,7 +233,10 @@ pub struct RebaseSummary {
     /// The authoritative verdict, when scoring ran.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verdict: Option<Verdict>,
-    /// Checksum of the emitted population candidate, when one was emitted.
+    /// Canonical checksum of the emitted population candidate, when one was
+    /// emitted — the creature that was scored, not the bytes of the file. The
+    /// file carries the champion's tags and the `rebase` stamp on top, so its
+    /// own digest would identify the document rather than the creature.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emitted_checksum: Option<String>,
 }
@@ -233,29 +287,36 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
         .map_err(|e| RunError::failure(format!("{}: {e}", cli.output_dir.display())))?;
     let journal = Journal::new(cli.output_dir.join("experiments.jsonl"));
 
-    let (champion, champion_file_checksum) = load_champion(&cli.champion)?;
+    let (champion, champion_file_checksum, champion_text) = load_champion(&cli.champion)?;
     let corpus = corpus_info(
         &cli.training_data,
         &TrainingDataConfig::new(champion.input, champion.output),
     )
     .map_err(RunError::incompatible)?;
-    let enhancements = load_enhancements(&cli.enhancements)?;
+    let sourced = collect_enhancements(cli, &champion, &corpus.identity)?;
+    let Sourced {
+        enhancements,
+        reference,
+        origin,
+        harvest_skipped,
+        reference_skipped,
+    } = sourced;
     if enhancements.is_empty() {
         return Err(RunError::incompatible(format!(
-            "no enhancements found at '{}'",
-            cli.enhancements.display()
+            "no enhancements found in {origin}"
         )));
     }
     let producer = enhancements[0].meta.producer.clone();
     let opening_checksum = enhancements[0].meta.base_checksum.clone();
 
-    let outcome = rebase(&RebaseRequest {
+    let mut outcome = rebase(&RebaseRequest {
         champion: &champion,
         enhancements: &enhancements,
         corpus_identity: &corpus.identity,
         max_candidates: cli.max_candidates,
     })
     .map_err(|e| RunError::incompatible(e.to_string()))?;
+    outcome.reference = reference;
 
     let _ = journal.append(&Record::Opening {
         producer: producer.clone(),
@@ -273,6 +334,9 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
         status: String::new(),
         dry_run: cli.dry_run,
         producer,
+        source: origin.label().to_string(),
+        harvest_skipped,
+        reference_skipped,
         opening_checksum,
         champion_file_checksum,
         champion_checksum: outcome.champion_checksum.clone(),
@@ -352,8 +416,29 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
                     checksum, winner.checksum
                 )));
             }
+            // The structure is the champion's plus the rebased work, so the
+            // tags that travel with it are the champion's. Losing them would
+            // strip the score, the error and the provenance a population
+            // check-in guard requires — a better creature nobody will accept.
+            let mut meta = CreatureMeta::from_json(&champion_text);
+            meta.retain_neurons(&creature.creature);
+            meta.stamp(&RebaseStamp {
+                score: winner.result.score,
+                error: winner.result.error,
+                champion_score: verdict.baseline.score,
+                source_score: verdict
+                    .reference
+                    .as_ref()
+                    .map_or(f64::NAN, |r| r.result.score),
+                applied: winner.applied_ids.len(),
+                label: &winner.label,
+                source: origin.label(),
+            });
+            let tagged = meta
+                .serialize_with(&creature.creature, true)
+                .map_err(RunError::failure)?;
             let path = cli.output_dir.join("population-candidate.json");
-            std::fs::write(&path, json)
+            std::fs::write(&path, tagged)
                 .map_err(|e| RunError::failure(format!("{}: {e}", path.display())))?;
             Some(checksum)
         }
@@ -429,8 +514,10 @@ fn summarise_enhancements(outcome: &RebaseOutcome) -> Vec<EnhancementSummary> {
         .collect()
 }
 
-/// Read the champion and its file checksum. The file is never written to.
-fn load_champion(path: &Path) -> Result<(CreatureExport, String), RunError> {
+/// Read the champion, its file checksum and its raw text. The file is never
+/// written to; the text is kept because the tags a population needs live
+/// outside the fields [`CreatureExport`] models.
+fn load_champion(path: &Path) -> Result<(CreatureExport, String, String), RunError> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| RunError::incompatible(format!("{}: {e}", path.display())))?;
     let creature = parse_creature_json(&text)
@@ -441,7 +528,158 @@ fn load_champion(path: &Path) -> Result<(CreatureExport, String), RunError> {
     // *creature*, and is what a candidate is compared against; this one
     // identifies the *bytes on disk*, which is what a caller comparing against
     // the population sees. They differ whenever the file was pretty-printed.
-    Ok((creature, sha256_hex(text.as_bytes())))
+    let file_checksum = sha256_hex(text.as_bytes());
+    Ok((creature, file_checksum, text))
+}
+
+/// Where this run's enhancements came from.
+enum Origin {
+    /// A bundle, enhancement or directory the producer filed.
+    Bundle(PathBuf),
+    /// Recovered from a creature that already carries the work.
+    Harvest(PathBuf),
+}
+
+impl Origin {
+    /// The word that names this origin in `rebase.json` and in the creature's
+    /// `rebase` tag.
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Bundle(_) => "bundle",
+            Self::Harvest(_) => "harvest",
+        }
+    }
+}
+
+impl std::fmt::Display for Origin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bundle(p) => write!(f, "bundle '{}'", p.display()),
+            Self::Harvest(p) => write!(f, "harvest of '{}'", p.display()),
+        }
+    }
+}
+
+/// The enhancements to rebase, and what is known about where they came from.
+struct Sourced {
+    enhancements: Vec<Enhancement>,
+    /// The producer's own descendant, to be scored beside the cohort.
+    reference: Option<Candidate>,
+    origin: Origin,
+    /// Patch ids that were present but could not be rebuilt.
+    harvest_skipped: Vec<String>,
+    /// Why the descendant could not be scored, when it could not.
+    reference_skipped: Option<String>,
+}
+
+/// Read a filed bundle, or recover one from a creature that carries the work.
+///
+/// The two paths are mutually exclusive at the argument parser, so exactly one
+/// of them runs.
+fn collect_enhancements(
+    cli: &Cli,
+    champion: &CreatureExport,
+    corpus_identity: &str,
+) -> Result<Sourced, RunError> {
+    if let Some(path) = &cli.harvest_from {
+        return harvest_source(cli, path, champion, corpus_identity);
+    }
+    let path = cli.enhancements.as_ref().ok_or_else(|| {
+        RunError::incompatible("one of --enhancements or --harvest-from is required".to_string())
+    })?;
+    Ok(Sourced {
+        enhancements: load_enhancements(path)?,
+        reference: None,
+        origin: Origin::Bundle(path.clone()),
+        harvest_skipped: Vec::new(),
+        reference_skipped: None,
+    })
+}
+
+/// Recover the enhancements a creature carries, and stage that creature as the
+/// scoring reference.
+///
+/// Only patches `--harvest-base` does not also carry are recovered: those are
+/// the run's own discoveries. Without a base, every patch in the creature is
+/// harvested and the engine drops whatever the champion already has.
+fn harvest_source(
+    cli: &Cli,
+    path: &Path,
+    champion: &CreatureExport,
+    corpus_identity: &str,
+) -> Result<Sourced, RunError> {
+    let source = read_creature(path)?;
+    let harvested = match &cli.harvest_base {
+        Some(base_path) => {
+            let base = read_creature(base_path)?;
+            harvest_delta(&source, &base)
+        }
+        None => harvest_all(&source),
+    };
+    let harvest_skipped: Vec<String> = harvested
+        .skipped
+        .iter()
+        .map(|s| format!("{}: {}", s.id, s.reason))
+        .collect();
+    for skip in &harvest_skipped {
+        eprintln!("neat_ai_rebase: harvest skipped {skip}");
+    }
+
+    // A harvest measured nothing, so it claims nothing: both scores are zero
+    // and the verdict is the only number that promotes anything.
+    let mut enhancements = harvested
+        .into_enhancements(&source, corpus_identity, HARVEST_PRODUCER, 0.0)
+        .map_err(RunError::failure)?;
+    for e in &mut enhancements {
+        e.meta.base_score = 0.0;
+        e.meta.improved_score = 0.0;
+    }
+
+    // The descendant is only worth scoring when it is a creature the scorer
+    // can read and it is not the champion itself. Either way this is said out
+    // loud — a missing `source` number must never look like a measurement.
+    let (reference, reference_skipped) = match validate_source_creature(&source) {
+        Ok(()) => {
+            let checksum = creature_checksum(&source).map_err(RunError::failure)?;
+            if checksum == creature_checksum(champion).map_err(RunError::failure)? {
+                (None, Some("descendant is the champion".to_string()))
+            } else {
+                (
+                    Some(Candidate {
+                        label: REFERENCE_LABEL.to_string(),
+                        creature: source,
+                        applied_ids: Vec::new(),
+                        checksum,
+                    }),
+                    None,
+                )
+            }
+        }
+        Err(e) => {
+            let reason = format!("descendant is not a scorable creature: {e}");
+            eprintln!("neat_ai_rebase: {reason}");
+            (None, Some(reason))
+        }
+    };
+
+    Ok(Sourced {
+        enhancements,
+        reference,
+        origin: Origin::Harvest(path.to_path_buf()),
+        harvest_skipped,
+        reference_skipped,
+    })
+}
+
+/// Producer recorded on a harvested enhancement: the harvest, not the
+/// optimiser, because the optimiser filed nothing.
+const HARVEST_PRODUCER: &str = "harvest/neat-ai-rebase";
+
+fn read_creature(path: &Path) -> Result<CreatureExport, RunError> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| RunError::incompatible(format!("{}: {e}", path.display())))?;
+    parse_creature_json(&text)
+        .map_err(|e| RunError::incompatible(format!("{}: {e}", path.display())))
 }
 
 /// Read a bundle, a single enhancement, or a directory of either.
@@ -499,6 +737,7 @@ mod tests {
         _tmp: tempfile::TempDir,
         cli: Cli,
         corpus_identity: String,
+        enhancements_dir: PathBuf,
     }
 
     fn write_corpus(dir: &Path, inputs: usize, outputs: usize) {
@@ -524,10 +763,13 @@ mod tests {
         .unwrap();
         let champion_path = tmp.path().join("champion.json");
         std::fs::write(&champion_path, creature_to_json(champion).unwrap()).unwrap();
+        let enhancements_dir = tmp.path().join("enhancements");
         Harness {
             cli: Cli {
                 champion: champion_path,
-                enhancements: tmp.path().join("enhancements"),
+                enhancements: Some(enhancements_dir.clone()),
+                harvest_from: None,
+                harvest_base: None,
                 training_data: training,
                 scorer: None,
                 output_dir: tmp.path().join("out"),
@@ -537,6 +779,7 @@ mod tests {
                 dry_run: false,
             },
             corpus_identity: corpus.identity,
+            enhancements_dir,
             _tmp: tmp,
         }
     }
@@ -576,7 +819,7 @@ mod tests {
     fn end_to_end_emits_a_population_candidate_when_the_scorer_agrees() {
         let champion = evolved_descendant(2.0, 0.5);
         let h = harness(&champion);
-        let bundle_path = h.cli.enhancements.join("bundle.json");
+        let bundle_path = h.enhancements_dir.join("bundle.json");
         write_bundle(&bundle_path, vec![forest(&h.corpus_identity, 1, 0.25)]);
 
         let scorer = ScriptedScorer::flat(0.50).with("single-00", 0.60);
@@ -587,9 +830,14 @@ mod tests {
         assert!(emitted.exists());
         let s = summary(&h.cli.output_dir);
         assert_eq!(s.status, "improved");
+        // The emitted checksum identifies the *creature* that was scored. The
+        // file itself carries the champion's tags and the rebase stamp on top,
+        // so its own digest names the document, not the creature.
+        let text = std::fs::read_to_string(&emitted).unwrap();
+        let creature = parse_creature_json(&text).unwrap();
         assert_eq!(
-            s.emitted_checksum.unwrap(),
-            sha256_hex(std::fs::read_to_string(&emitted).unwrap().as_bytes())
+            s.emitted_checksum.clone().unwrap(),
+            sha256_hex(creature_to_json(&creature).unwrap().as_bytes())
         );
         let verdict = s.verdict.unwrap();
         assert!(verdict.improved());
@@ -605,7 +853,7 @@ mod tests {
         let champion = evolved_descendant(2.0, 0.5);
         let h = harness(&champion);
         write_bundle(
-            &h.cli.enhancements.join("bundle.json"),
+            &h.enhancements_dir.join("bundle.json"),
             vec![forest(&h.corpus_identity, 1, 0.25)],
         );
         let scorer = ScriptedScorer::flat(0.80).with("single-00", 0.70);
@@ -622,7 +870,7 @@ mod tests {
     fn a_scorer_failure_is_an_operational_failure_and_emits_nothing() {
         let h = harness(&evolved_descendant(2.0, 0.5));
         write_bundle(
-            &h.cli.enhancements.join("bundle.json"),
+            &h.enhancements_dir.join("bundle.json"),
             vec![forest(&h.corpus_identity, 1, 0.25)],
         );
         let scorer = ScriptedScorer::flat(0.5)
@@ -636,7 +884,7 @@ mod tests {
     fn dry_run_validates_without_scoring_or_emitting() {
         let h = harness(&evolved_descendant(2.0, 0.5));
         write_bundle(
-            &h.cli.enhancements.join("bundle.json"),
+            &h.enhancements_dir.join("bundle.json"),
             vec![forest(&h.corpus_identity, 1, 0.25)],
         );
         let mut cli = h.cli;
@@ -654,7 +902,7 @@ mod tests {
     fn corpus_drift_is_incompatible_input() {
         let h = harness(&evolved_descendant(2.0, 0.5));
         write_bundle(
-            &h.cli.enhancements.join("bundle.json"),
+            &h.enhancements_dir.join("bundle.json"),
             vec![forest("a-corpus-from-somewhere-else", 1, 0.25)],
         );
         // Nothing could be attempted — but the run still writes its summary
@@ -680,7 +928,7 @@ mod tests {
         .unwrap();
         let grafted = outcome.cohort[1].creature.clone();
         std::fs::write(&h.cli.champion, creature_to_json(&grafted).unwrap()).unwrap();
-        write_bundle(&h.cli.enhancements.join("bundle.json"), vec![e]);
+        write_bundle(&h.enhancements_dir.join("bundle.json"), vec![e]);
 
         let code = run_with(&h.cli, Some(&ScriptedScorer::flat(0.5))).unwrap();
         assert_eq!(code, EXIT_NO_IMPROVEMENT);
@@ -691,16 +939,16 @@ mod tests {
     #[test]
     fn a_directory_of_enhancements_is_read_in_file_name_order() {
         let h = harness(&evolved_descendant(2.0, 0.5));
-        std::fs::create_dir_all(&h.cli.enhancements).unwrap();
+        std::fs::create_dir_all(&h.enhancements_dir).unwrap();
         let a = forest(&h.corpus_identity, 0, 0.25);
         let b = forest(&h.corpus_identity, 1, -0.1);
         std::fs::write(
-            h.cli.enhancements.join("02-second.json"),
+            h.enhancements_dir.join("02-second.json"),
             serde_json::to_string(&b).unwrap(),
         )
         .unwrap();
         std::fs::write(
-            h.cli.enhancements.join("01-first.json"),
+            h.enhancements_dir.join("01-first.json"),
             serde_json::to_string(&a).unwrap(),
         )
         .unwrap();
@@ -719,10 +967,180 @@ mod tests {
         let err = run_with(&h.cli, Some(&ScriptedScorer::flat(0.5))).unwrap_err();
         assert_eq!(err.code, EXIT_INCOMPATIBLE);
 
-        std::fs::create_dir_all(&h.cli.enhancements).unwrap();
-        std::fs::write(h.cli.enhancements.join("bad.json"), "{ not json").unwrap();
+        std::fs::create_dir_all(&h.enhancements_dir).unwrap();
+        std::fs::write(h.enhancements_dir.join("bad.json"), "{ not json").unwrap();
         let err = run_with(&h.cli, Some(&ScriptedScorer::flat(0.5))).unwrap_err();
         assert_eq!(err.code, EXIT_INCOMPATIBLE);
+    }
+
+    /// Graft `enhancements` onto `base` and return the resulting creature —
+    /// the descendant a producer that files no bundle would publish.
+    fn descendant_of(
+        base: &CreatureExport,
+        corpus_identity: &str,
+        enhancements: &[Enhancement],
+    ) -> CreatureExport {
+        let outcome = rebase(&RebaseRequest {
+            champion: base,
+            enhancements,
+            corpus_identity,
+            max_candidates: 0,
+        })
+        .unwrap();
+        outcome
+            .cohort
+            .iter()
+            .find(|c| c.label == "bundle" || c.label == "single-00")
+            .expect("the base accepts the patches")
+            .creature
+            .clone()
+    }
+
+    #[test]
+    fn harvest_from_rebases_a_run_s_discoveries_without_a_filed_bundle() {
+        // The fleet moved on to `champion` while the producer was searching
+        // from `base`; the producer published `descendant` and filed nothing.
+        let champion = evolved_descendant(2.0, 0.5);
+        let h = harness(&champion);
+        let base = linear_hidden_creature(2.0);
+        let discoveries = vec![
+            forest(&h.corpus_identity, 0, 0.25),
+            forest(&h.corpus_identity, 1, -0.1),
+        ];
+        let descendant = descendant_of(&base, &h.corpus_identity, &discoveries);
+
+        let base_path = h._tmp.path().join("base.json");
+        let descendant_path = h._tmp.path().join("descendant.json");
+        std::fs::write(&base_path, creature_to_json(&base).unwrap()).unwrap();
+        std::fs::write(&descendant_path, creature_to_json(&descendant).unwrap()).unwrap();
+
+        let mut cli = h.cli;
+        cli.enhancements = None;
+        cli.harvest_from = Some(descendant_path);
+        cli.harvest_base = Some(base_path);
+
+        let scorer = ScriptedScorer::flat(0.50).with("bundle", 0.60);
+        let code = run_with(&cli, Some(&scorer)).unwrap();
+        assert_eq!(code, EXIT_IMPROVED);
+
+        let s = summary(&cli.output_dir);
+        assert_eq!(s.source, "harvest");
+        assert_eq!(
+            s.enhancements.len(),
+            2,
+            "both discoveries were recovered from the creature: {:?}",
+            s.enhancements
+        );
+        assert!(s.harvest_skipped.is_empty(), "{:?}", s.harvest_skipped);
+        assert!(cli.output_dir.join("population-candidate.json").exists());
+    }
+
+    #[test]
+    fn the_producer_s_own_descendant_is_scored_but_can_never_win() {
+        let champion = evolved_descendant(2.0, 0.5);
+        let h = harness(&champion);
+        let base = linear_hidden_creature(2.0);
+        let discoveries = vec![forest(&h.corpus_identity, 0, 0.25)];
+        let descendant = descendant_of(&base, &h.corpus_identity, &discoveries);
+        let descendant_path = h._tmp.path().join("descendant.json");
+        std::fs::write(&descendant_path, creature_to_json(&descendant).unwrap()).unwrap();
+
+        let mut cli = h.cli;
+        cli.enhancements = None;
+        cli.harvest_from = Some(descendant_path);
+
+        // The descendant looks like the best creature in the room, and it is
+        // still not publishable: it descends from an ancestor the champion has
+        // moved past. Only a rebased candidate may be promoted.
+        let scorer = ScriptedScorer::flat(0.50).with("source", 0.99);
+        let code = run_with(&cli, Some(&scorer)).unwrap();
+        assert_eq!(code, EXIT_NO_IMPROVEMENT);
+        assert!(!cli.output_dir.join("population-candidate.json").exists());
+
+        let verdict = summary(&cli.output_dir).verdict.unwrap();
+        let reference = verdict.reference.expect("the descendant was scored");
+        assert_eq!(reference.label, "source");
+        assert!((reference.result.score - 0.99).abs() < 1e-12);
+        assert!(
+            !verdict.candidates.iter().any(|c| c.label == "source"),
+            "the descendant is evidence, never a candidate"
+        );
+        assert!(verdict.winner.is_none());
+        // Scored in the same authoritative call as everything else.
+        assert!(cli.output_dir.join("scoring").join("source.json").exists());
+    }
+
+    #[test]
+    fn the_champion_s_tags_survive_onto_the_published_candidate() {
+        let champion = evolved_descendant(2.0, 0.5);
+        let h = harness(&champion);
+        // A real champion arrives carrying its score and its provenance.
+        let mut doc: serde_json::Value =
+            serde_json::from_str(&creature_to_json(&champion).unwrap()).unwrap();
+        doc["tags"] = serde_json::json!([
+            {"name": "score", "value": "0.396440843126"},
+            {"name": "discovery", "value": "🔬 Discovery of GRQ-24"},
+            {"name": "intelligentDesign", "value": "🧬 ID"},
+        ]);
+        std::fs::write(&h.cli.champion, serde_json::to_string_pretty(&doc).unwrap()).unwrap();
+        write_bundle(
+            &h.enhancements_dir.join("bundle.json"),
+            vec![forest(&h.corpus_identity, 1, 0.25)],
+        );
+
+        let scorer = ScriptedScorer::flat(0.50).with("single-00", 0.60);
+        assert_eq!(run_with(&h.cli, Some(&scorer)).unwrap(), EXIT_IMPROVED);
+
+        let emitted =
+            std::fs::read_to_string(h.cli.output_dir.join("population-candidate.json")).unwrap();
+        let meta = CreatureMeta::from_json(&emitted);
+        assert_eq!(meta.get("discovery"), Some("🔬 Discovery of GRQ-24"));
+        assert_eq!(meta.get("intelligentDesign"), Some("🧬 ID"));
+        // The score is the authoritative one this run measured, not the tag
+        // the champion arrived with.
+        assert_eq!(meta.score(), Some(0.60));
+        let rebase_tag = meta.get("rebase").expect("a rebase tag names the work");
+        assert!(rebase_tag.contains("Rebase"), "{rebase_tag}");
+        assert!(rebase_tag.contains("vs champion"), "{rebase_tag}");
+        // No source creature was supplied, so no comparison against one is
+        // claimed.
+        assert!(!rebase_tag.contains("vs source"), "{rebase_tag}");
+    }
+
+    #[test]
+    fn an_enhancement_source_is_required_and_the_two_are_exclusive() {
+        let base = [
+            "neat_ai_rebase",
+            "--champion",
+            "champion.json",
+            "--training-data",
+            "training/",
+            "--output-dir",
+            "runs/first",
+        ];
+        assert!(
+            Cli::try_parse_from(base).is_err(),
+            "neither --enhancements nor --harvest-from is not a runnable command"
+        );
+
+        let mut both: Vec<&str> = base.to_vec();
+        both.extend(["--enhancements", "bundle.json", "--harvest-from", "d.json"]);
+        assert!(
+            Cli::try_parse_from(both).is_err(),
+            "a run reads its enhancements from exactly one place"
+        );
+
+        let mut harvest: Vec<&str> = base.to_vec();
+        harvest.extend([
+            "--harvest-from",
+            "descendant.json",
+            "--harvest-base",
+            "opening.json",
+        ]);
+        let cli = Cli::try_parse_from(harvest).unwrap();
+        assert_eq!(cli.harvest_from, Some(PathBuf::from("descendant.json")));
+        assert_eq!(cli.harvest_base, Some(PathBuf::from("opening.json")));
+        assert!(cli.enhancements.is_none());
     }
 
     #[test]
