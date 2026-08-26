@@ -2,13 +2,31 @@
 name = "neat-ai-rebase"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license = "Apache-2.0"
 description = "Rebase portable NEAT-AI improvements onto the latest champion and let the scorer decide."
 repository = "https://github.com/stSoftwareAU/NEAT-AI-Rebase"
+readme = "../README.md"
+
+[lints]
+workspace = true
+
+[lib]
+name = "neat_ai_rebase"
+path = "src/lib.rs"
+
+[[bin]]
+name = "neat_ai_rebase"
+path = "src/main.rs"
 
 [dependencies]
+# Keep this sibling path aligned with NEAT-AI-scorer / NEAT-AI-Forests /
+# NEAT-AI-Ockham. CI checks out NEAT-AI-core beside this repo — see
+# `.github/actions/setup-neat-core`.
+neat-core = { path = "../../NEAT-AI-core/neat-core" }
+clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

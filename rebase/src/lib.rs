@@ -1,48 +1,91 @@
-//! NEAT-AI-Rebase
+//! NEAT-AI-Rebase — rebase the improvement, don't replace the champion.
 //!
-//! Rebase portable, scorer-proven enhancements from a stale ancestor onto the
-//! latest champion. The authoritative scorer remains the final judge.
+//! A long-running optimiser starts from creature **A**, discovers an
+//! improvement **Δ**, and finishes after the fleet has already evolved to
+//! creature **B**. Publishing `A + Δ` throws away everything that made B better
+//! than A. Rebase treats Δ as the artefact worth keeping:
+//!
+//! ```text
+//! A ── optimiser ──▶ A + Δ
+//! │
+//! └──────── fleet evolves ────────▶ B
+//!                                   │
+//!                                   └─ reapply Δ ─▶ B + Δ
+//!                                                  │
+//!                                                  └─ authoritative scorer decides
+//! ```
+//!
+//! ## The pipeline
+//!
+//! | Stage | Module | Contract |
+//! | --- | --- | --- |
+//! | portable change | [`enhancement`] | versioned envelope; unknown versions and kinds fail closed |
+//! | can it be attempted? | [`compat`] | version, identity, corpus, dimensions |
+//! | is it already there? | [`adapter`] | idempotence, per kind |
+//! | construct the candidate | [`forest`], [`ockham`] | never mutate the champion |
+//! | build a cohort | [`engine`] | baseline, singles, prefixes, full bundle; de-duplicated |
+//! | decide | [`scorer`] | NEAT-AI-scorer, one call, fail closed |
+//!
+//! ## The rules that do not bend
+//!
+//! * **The scorer has the final say.** Previous success is evidence, never
+//!   permission. A candidate proven on an old ancestor is still rejected on a
+//!   new champion when it does not beat it.
+//! * **The champion is never modified.** Every adapter clones.
+//! * **Idempotence beats host exclusion.** If the champion already carries an
+//!   enhancement, that is recognised — Rebase needs no special case for "the
+//!   creature this host just published".
+//! * **No assumption of additivity.** Two changes that each helped separately
+//!   may interact badly, so combinations are scored, not trusted.
+//! * **A no-improvement verdict is a normal result**, not an operational
+//!   failure.
+//!
+//! ## Quick start
+//!
+//! ```no_run
+//! use neat_ai_rebase::{
+//!     engine::{RebaseRequest, rebase},
+//!     enhancement::EnhancementBundle,
+//! };
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # let champion = neat_ai_rebase::fixtures::linear_hidden_creature(2.0);
+//! # let bundle: EnhancementBundle = serde_json::from_str("{}")?;
+//! let outcome = rebase(&RebaseRequest {
+//!     champion: &champion,
+//!     enhancements: &bundle.enhancements,
+//!     corpus_identity: "3f2a1b0c9d8e7f65",
+//!     max_candidates: 8,
+//! })?;
+//! for candidate in &outcome.cohort {
+//!     println!("{} <- {:?}", candidate.label, candidate.applied_ids);
+//! }
+//! # Ok(())
+//! # }
+//! ```
 
-use serde::{Deserialize, Serialize};
+#![doc(html_root_url = "https://docs.rs/neat-ai-rebase")]
+#![warn(missing_docs)]
 
-/// Version of the portable enhancement envelope.
-pub const ENHANCEMENT_FORMAT_VERSION: u32 = 1;
+pub mod adapter;
+pub mod cli;
+pub mod compat;
+pub mod corpus;
+pub mod creature;
+pub mod engine;
+pub mod enhancement;
+pub mod fixtures;
+pub mod forest;
+pub mod journal;
+pub mod ockham;
+pub mod patch;
+pub mod scorer;
 
-/// Provenance shared by every enhancement kind.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EnhancementMeta {
-    pub version: u32,
-    pub id: String,
-    pub producer: String,
-    pub base_checksum: String,
-    pub base_score: f64,
-    pub improved_score: f64,
-    pub corpus_identity: String,
-}
-
-/// Version-1 enhancement types.
-///
-/// Concrete Forest and Ockham payloads are added by the implementation issues;
-/// the envelope starts intentionally small rather than guessing their formats.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum Enhancement {
-    ForestPatch {
-        meta: EnhancementMeta,
-        payload: serde_json::Value,
-    },
-    OckhamRemoval {
-        meta: EnhancementMeta,
-        neuron_uuid: String,
-        removal_kind: String,
-    },
-}
-
-impl Enhancement {
-    pub fn meta(&self) -> &EnhancementMeta {
-        match self {
-            Self::ForestPatch { meta, .. } | Self::OckhamRemoval { meta, .. } => meta,
-        }
-    }
-}
+pub use adapter::Application;
+pub use compat::{Incompatibility, Target};
+pub use engine::{Candidate, RebaseOutcome, RebaseRequest, rebase};
+pub use enhancement::{
+    ENHANCEMENT_FORMAT_VERSION, Enhancement, EnhancementBundle, EnhancementMeta, OckhamRemoval,
+    Payload, ProducerContext, RemovalStrategy,
+};
+pub use patch::Patch;
+pub use scorer::{DirectoryScorer, ExternalScorer, ScoreResult, ScorerError, Verdict, judge};
