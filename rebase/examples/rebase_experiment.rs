@@ -57,6 +57,13 @@ struct Args {
     /// naming the ones that actually won and let the scorer judge their
     /// combination.
     only: Option<Vec<String>>,
+    /// Which stratum a sampled screen takes.
+    ///
+    /// Selecting enhancements on one phase and confirming them on the SAME
+    /// phase is circular — it harvests that stratum's noise. Screening on
+    /// phase 0 and re-screening the survivors on phase 1 keeps most of the
+    /// accidents out of the expensive authoritative pass.
+    sample_phase: u64,
 }
 
 fn parse_args() -> Args {
@@ -69,6 +76,7 @@ fn parse_args() -> Args {
     let mut max_candidates = 6usize;
     let mut emit = None;
     let mut only: Option<Vec<String>> = None;
+    let mut sample_phase: u64 = 0;
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < argv.len() {
@@ -81,6 +89,7 @@ fn parse_args() -> Args {
             "--scorer" => scorer = Some(PathBuf::from(value)),
             "--out" => out = Some(PathBuf::from(value)),
             "--sample-rate" => sample_rate = value.parse().ok(),
+            "--sample-phase" => sample_phase = value.parse().unwrap_or(0),
             "--max-candidates" => max_candidates = value.parse().unwrap_or(6),
             "--emit" => emit = Some(PathBuf::from(value)),
             "--only" => {
@@ -114,6 +123,7 @@ fn parse_args() -> Args {
         max_candidates,
         emit,
         only,
+        sample_phase,
     }
 }
 
@@ -252,7 +262,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("         every candidate passes neat_core::creature_validate");
 
     let mode = match args.sample_rate {
-        Some(rate) if rate < 1.0 => ScorerMode::Sample { rate, phase: 0 },
+        Some(rate) if rate < 1.0 => ScorerMode::Sample {
+            rate,
+            phase: args.sample_phase,
+        },
         _ => ScorerMode::Full,
     };
     println!(

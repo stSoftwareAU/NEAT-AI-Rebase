@@ -72,6 +72,33 @@ of additivity**. Two changes that each helped separately may interact badly.
 Scoring both lets the scorer pick the best verified subset instead of Rebase
 guessing which member carries the improvement.
 
+### 4b. Screening, and the trap in it
+
+Constructing a cohort is cheap; scoring it is not. A full-corpus pass over the
+production corpus is minutes, so it is tempting to rank the cohort on a
+sub-sample first and only pay for the promising members.
+
+That is a good instinct with a sharp edge. **Do not select on a sample and then
+judge that selection on the same sample.** With N candidates, some beat the
+baseline on any given stratum by chance, and "keep the ones that won" picks
+exactly those. Measured on the live fleet: choosing the best 32 of 101 patches
+on a 2% stratum and re-scoring that selection on the same stratum reported
+**+5.9e-04**; the full corpus scored it at **−4.3e-05**. A held-out re-screen
+on a different stratum of the same size retained 16 of 29 — about what coin
+flips give when the true effect is zero.
+
+The scorer supports this directly: `--sample-phase` shifts the deterministic
+stride to a different subsample of the same size. So:
+
+1. screen on one phase;
+2. re-screen the survivors on another phase, and keep the intersection;
+3. **confirm on the full corpus**, which is the only step that decides
+   anything.
+
+Step 3 is what makes a verdict safe — it always was, and a candidate selected
+from noise simply loses there. Steps 1 and 2 are what stop the expensive pass
+being spent on noise in the first place.
+
 ### 5. Scorer verdict
 
 The champion and the whole cohort are scored in **one** authoritative

@@ -70,6 +70,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Blind bundling loses; the question this answers is whether any
     // individual stranded discovery still helps the champion.
     let mut batch: Option<usize> = None;
+    // Restrict to these ids, in this order. The order matters: the engine
+    // builds cumulative prefixes, so passing the screen's winners sorted by
+    // individual gain makes `prefix-NN` mean "the best N".
+    let mut ids: Option<Vec<String>> = None;
+    // Which stratum of the corpus the sample takes. Selecting patches on one
+    // phase and validating them on the SAME phase is circular — it harvests
+    // that stratum's noise. Screen on one phase, confirm on another.
+    let mut sample_phase: u64 = 0;
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < argv.len() {
@@ -86,6 +94,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--donor-window" => donor_window = value.parse().ok(),
             "--max-donors" => max_donors = value.parse().ok(),
             "--batch" => batch = value.parse().ok(),
+            "--sample-phase" => sample_phase = value.parse().unwrap_or(0),
+            "--ids" => {
+                ids = Some(
+                    value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .collect(),
+                )
+            }
             other => {
                 eprintln!("unknown argument `{other}`");
                 std::process::exit(2);
@@ -247,18 +266,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for e in &mut enhancements {
         e.meta.improved_score = 0.0;
     }
+    if let Some(ids) = &ids {
+        let before = enhancements.len();
+        // Reorder to match the caller's list, not the donor scan order.
+        let mut picked: Vec<Enhancement> = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(pos) = enhancements.iter().position(|e| &e.meta.id == id) {
+                picked.push(enhancements.remove(pos));
+            }
+        }
+        println!(
+            "           restricted to {} of {before} by --ids",
+            picked.len()
+        );
+        enhancements = picked;
+        if enhancements.is_empty() {
+            println!("none of the requested ids are stranded on this base");
+            return Ok(());
+        }
+    }
 
     // 4a. Per-patch screening. One creature per patch is far too much JSON to
     //     stage at once for 90 patches (~550 MB, and the scorer parses all of
     //     it), so screen in batches and keep only what wins on its own.
     if let Some(size) = batch {
         let mode = match sample_rate {
-            Some(rate) if rate < 1.0 => ScorerMode::Sample { rate, phase: 0 },
+            Some(rate) if rate < 1.0 => ScorerMode::Sample {
+                rate,
+                phase: sample_phase,
+            },
             _ => ScorerMode::Full,
         };
         let scorer = ExternalScorer::with_args(&scorer_bin, vec!["--gpu=off".into()]);
         println!(
-            "\nscreening  {} patches individually in batches of {size}, {} pass",
+            "\nscreening  {} patches individually in batches of {size}, {} pass (phase {sample_phase})",
             enhancements.len(),
             mode.label()
         );
