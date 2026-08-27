@@ -11,6 +11,11 @@ Run the same gate CI runs:
 It needs the sibling `../NEAT-AI-core` checkout, `shellcheck`, and (optionally)
 `cargo-deny`. Everything else is plain `cargo`.
 
+CI adds one gate `quality.sh` cannot run locally:
+`.github/workflows/gitleaks.yml` scans the PR's commit range for committed
+secrets and fails the PR if it finds one. Rotate anything it flags — rewriting
+the branch alone does not un-leak a credential.
+
 ## What a change has to preserve
 
 Rebase exists to stop useful discoveries being destroyed at population
