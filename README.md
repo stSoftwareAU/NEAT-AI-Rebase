@@ -1,5 +1,7 @@
 # NEAT-AI-Rebase
 
+![NEAT-AI-Rebase](https://raw.githubusercontent.com/stSoftwareAU/NEAT-AI/Develop/docs/brand/social-previews/neat-ai-rebase.png)
+
 **Rebase the improvement, don't replace the champion.**
 
 NEAT-AI-Rebase preserves useful discoveries made by independent NEAT-AI
@@ -32,6 +34,11 @@ the v1 enhancement contract, the Forests graft adapter, the Ockham removal
 adapter, the candidate-cohort engine, the authoritative scorer gate, and the
 CLI. `rebase/tests/race_conditions.rs` reproduces the races the project exists
 to survive.
+
+Two later additions let a producer call one binary rather than file a bundle
+first: `--harvest-from` reads the enhancements back out of a published creature,
+and `--screen-sample-rate` narrows a cohort on a sub-sample before the corpus is
+touched.
 
 Wiring the producers up — NEAT-AI-Forests and NEAT-AI-Ockham calling Rebase at
 population re-entry — is the next step, and is deliberately separate: it
@@ -76,28 +83,40 @@ Two examples build runnable fixtures without a real corpus or champion:
 `cargo run --example make_fixture -- <dir>` writes a champion and a bundle for
 a manual end-to-end run against `<dir>/training`.
 
+Four more work against real creatures. `harvest_bundle` recovers the bundle a
+Forests run would have filed, from the creature it published; `validate` checks
+creature JSON against the shared NEAT-AI-core contract; and `rebase_experiment`
+and `union_experiment` are the overnight harnesses — the first asks whether
+rebasing a Forests creature's discoveries onto the concurrently-evolved champion
+beats publishing that creature, the second grafts every scorer-verified
+discovery the fittest creature is missing back onto it. Each carries its own
+usage in the file header.
+
 ### Command line
 
 ```text
-neat_ai_rebase --champion <FILE> --enhancements <FILE-OR-DIR> \
+neat_ai_rebase --champion <FILE> \
+               (--enhancements <FILE-OR-DIR> | --harvest-from <FILE>) \
                --training-data <DIR> --output-dir <DIR> \
                [--scorer <PATH>] [--scorer-arg <ARG>]... \
-               [--min-improvement <DELTA>] [--max-candidates <N>] [--dry-run]
+               [--min-improvement <DELTA>] [--max-candidates <N>] \
+               [--screen-sample-rate <RATE>] [--screen-held-out <BOOL>] \
+               [--dry-run]
 ```
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--champion` | — | the **freshly fetched** current global champion; read, never written |
-| `--enhancements` | — | a bundle, a single enhancement, or a directory of either (read in file-name order) |
-| `--harvest-from` | — | take the enhancements from this creature instead of a bundle; for a producer that does not file bundles yet |
+| `--enhancements` | — | a bundle, a single enhancement, or a directory of either (read in file-name order); required unless `--harvest-from` is given |
+| `--harvest-from` | — | take the enhancements from this creature instead of a bundle; for a producer that does not file bundles yet. Mutually exclusive with `--enhancements` |
 | `--training-data` | — | the corpus the verdict is measured on, and the source of the corpus identity |
 | `--scorer` | — | the `rust_scorer` binary; not required with `--dry-run` |
-| `--output-dir` | — | where the three outputs are written |
+| `--output-dir` | — | where the outputs below are written |
 | `--scorer-arg` | — | extra argument passed verbatim to the scorer, repeatable (e.g. `--scorer-arg=--gpu=off`) |
 | `--min-improvement` | `1e-9` | score a candidate must beat the champion by |
 | `--max-candidates` | `8` | cap on constructed candidates, excluding the baseline; `0` = uncapped |
 | `--screen-sample-rate` | off | screen each enhancement on a sub-sample first and carry forward only what beats the champion alone |
-| `--screen-held-out` | `true` | re-screen survivors on a second stratum and keep the intersection |
+| `--screen-held-out` | `true` | re-screen survivors on a second stratum and keep the intersection; takes an explicit `true`/`false` |
 | `--dry-run` | off | build and validate candidates without scoring or emitting |
 
 > **Fetch the champion immediately before running.** Rebase loads it once and
