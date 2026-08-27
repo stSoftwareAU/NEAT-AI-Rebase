@@ -123,6 +123,12 @@ The strategy is part of the enhancement because the two produce **different
 creatures**. Rebase reproduces the one that was accepted, or refuses. It never
 substitutes the other.
 
+Producers do not have to build this envelope by hand: `PruneLog` (see
+[`integration.md`](integration.md)) records the opening facts once and stamps
+them on every accepted prune, refusing a non-finite score or mean, a UUID the
+opening creature never carried, a target that was not hidden, and a removal
+filed twice.
+
 ## Identity
 
 `meta.id` names the *change*, not the run that found it. It is derived from the

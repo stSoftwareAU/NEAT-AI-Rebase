@@ -19,6 +19,7 @@
 //!
 //! | Stage | Module | Contract |
 //! | --- | --- | --- |
+//! | file the change | [`prune_log`] | producer side: each accepted Ockham prune becomes a v1 enhancement, stamped with the opening facts |
 //! | portable change | [`enhancement`] | versioned envelope; unknown versions and kinds fail closed |
 //! | can it be attempted? | [`compat`] | version, identity, corpus, dimensions |
 //! | is it already there? | [`adapter`] | idempotence, per kind |
@@ -79,6 +80,7 @@ pub mod harvest;
 pub mod journal;
 pub mod ockham;
 pub mod patch;
+pub mod prune_log;
 pub mod scorer;
 pub mod tags;
 
@@ -90,4 +92,5 @@ pub use enhancement::{
     Payload, ProducerContext, RemovalStrategy,
 };
 pub use patch::Patch;
+pub use prune_log::{PruneLog, PruneLogError};
 pub use scorer::{DirectoryScorer, ExternalScorer, ScoreResult, ScorerError, Verdict, judge};

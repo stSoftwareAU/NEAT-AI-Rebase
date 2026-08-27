@@ -40,6 +40,10 @@ journal.
 Do this at the moment of acceptance, in acceptance order. A run that files only
 its final creature has thrown away everything Rebase needs.
 
+An Ockham run does not have to hand-build the envelope: `PruneLog` holds the
+opening facts from step 1 and stamps them on every prune, so a bundle cannot
+end up naming a creature nobody else has. See the worked example below.
+
 ### 3. Refresh the champion at re-entry time
 
 When the run ends, fetch the current global champion **again**, through
@@ -104,20 +108,67 @@ nothing.
 ## Worked example — Ockham
 
 An Ockham run opens on `A` and proves that hidden neuron `h7` is not earning
-its keep.
+its keep. Meanwhile the fleet moves the champion on to `B`.
 
-1. On open: same four facts.
-2. On acceptance: file
+```mermaid
+sequenceDiagram
+    autonumber
+    participant O as Ockham run
+    participant L as PruneLog
+    participant P as Population
+    participant R as Rebase
+    participant S as Scorer
+    O->>P: fetch champion → A
+    O->>L: opening(producer, A, baseScore, corpusIdentity)
+    Note over P: the fleet evolves A → B independently
+    O->>L: accept("h7", meanAblation{mean}, improvedScore)
+    O->>L: write_bundle(bundle.json)
+    O->>P: fetch champion again → B
+    O->>R: --champion B --enhancements bundle.json
+    R->>R: already absent? → alreadyPresent, else replay onto a clone of B
+    R->>S: score B and every rebased candidate
+    S-->>R: verdict
+    R-->>O: population-candidate.json, only when B + Δ beat B
+```
+
+1. On open: same four facts, held in one `PruneLog`.
+
+   ```rust
+   let mut log = PruneLog::opening("neat-ai-ockham/0.4.2", &opening, base_score, &corpus_identity)?;
+   ```
+
+2. On acceptance: file the exact transformation, in acceptance order.
+
+   ```rust
+   log.accept("h7", RemovalStrategy::MeanAblation { mean: 0.03125 }, improved_score)?;
+   ```
+
+   Which produces
    `{"kind": "ockhamRemoval", "neuronUuid": "h7", "strategy": "meanAblation", "mean": 0.03125}`.
    The strategy matters — record the one you actually ran, because
    `identityCollapse` and `meanAblation` produce different creatures and Rebase
-   will refuse rather than substitute.
-3. At the end: fetch the champion again.
-4. Invoke Rebase.
+   will refuse rather than substitute. Filing fails closed on a non-finite
+   score or mean, a UUID `A` never carried, a neuron that was not hidden, and
+   the same removal filed twice.
+3. At the end: `log.write_bundle(path)?` — it returns `false` and writes
+   nothing when the run accepted no prune, which is the signal not to invoke
+   Rebase at all. Then fetch the champion **again**. Your local incumbent is
+   `A` minus your prunes; it is not the fleet's current champion, and treating
+   it as one is the race.
+4. Invoke Rebase with the fresh champion.
    * If `B` still has `h7`, the removal replays onto `B` and is scored.
    * If `B` has already dropped `h7` — the fleet pruned it, or another host's
-     rebase did — it is reported `alreadyPresent`. No error, no retry.
+     rebase did — it is reported `alreadyPresent`. No error, no retry, and no
+     corpus pass.
+   * If `B` has changed `h7` such that the recorded transformation cannot be
+     reproduced — the squash it was collapsed as is no longer IDENTITY, say —
+     the prune is reported `incompatible` with the reason, the other prunes in
+     the bundle are unaffected, and `B` stands.
 5. Publish only what Rebase emits.
+6. Keep the run's own replay path behind a switch (step 6 above) and log which
+   one ran. `rebase/tests/ockham_reentry.rs` is the evidence that the generic
+   path handles the four cases; evidence on your workload is what retires the
+   duplication.
 
 ## Writing a new adapter
 

@@ -39,6 +39,12 @@ changes two running optimisers, so it lands behind their own feature switches
 with their own evidence. [`docs/integration.md`](docs/integration.md) is the
 checklist for it.
 
+The Ockham half of that wiring is ready on this side: `PruneLog` turns each
+accepted prune into a v1 enhancement stamped with the opening checksum, score
+and corpus identity, and `rebase/tests/ockham_reentry.rs` runs the whole path —
+file the prunes, fetch a *fresh* champion, replay, score, publish — over the
+real CLI against a scripted scorer.
+
 ## Quick start
 
 Rebase is a Rust workspace that depends on the sibling
