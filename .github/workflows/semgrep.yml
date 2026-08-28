@@ -1,0 +1,45 @@
+# Semgrep SAST scanning for NEAT-AI-Rebase (Issue #14).
+#
+# Runs the Semgrep static-analysis gate over every pull request. The scanner
+# ships as a container image pinned by digest, and `actions/checkout` is pinned
+# to a 40-character commit SHA, matching `ci.yml` and `gitleaks.yml`, so a
+# hijacked tag cannot execute here.
+#
+# `SEMGREP_APP_TOKEN` is optional. When the organisation has one, findings are
+# also reported to the Semgrep AppSec Platform; when it is absent — including
+# on Dependabot pull requests, which are never given Actions secrets — the
+# variable expands to an empty string and `semgrep ci` scans with the
+# `p/default` ruleset alone. Either way the scan runs and a blocking finding
+# fails the job, so the gate never silently degrades into a no-op.
+name: Semgrep
+
+on:
+  pull_request:
+    branches: ["*"]
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: SAST Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: semgrep/semgrep:1.175.0@sha256:b94b53d02fd4a022f9eac4e2af1380f5c3c4c21400e79d3336bdff1d1db5e796
+    steps:
+      # `fetch-depth: 0` gives `semgrep ci` the history it needs to resolve the
+      # merge base for a diff-aware scan locally, instead of re-fetching the
+      # base branch itself mid-scan. Credentials are dropped: this repository
+      # is public, so any fetch Semgrep still chooses to make succeeds
+      # anonymously.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Semgrep scan
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        run: semgrep ci --config p/default

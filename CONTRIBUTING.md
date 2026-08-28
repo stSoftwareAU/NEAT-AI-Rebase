@@ -11,10 +11,15 @@ Run the same gate CI runs:
 It needs the sibling `../NEAT-AI-core` checkout, `shellcheck`, and (optionally)
 `cargo-deny`. Everything else is plain `cargo`.
 
-CI adds one gate `quality.sh` cannot run locally:
-`.github/workflows/gitleaks.yml` scans the PR's commit range for committed
-secrets and fails the PR if it finds one. Rotate anything it flags — rewriting
-the branch alone does not un-leak a credential.
+CI adds two gates `quality.sh` cannot run locally:
+
+* `.github/workflows/gitleaks.yml` scans the PR's commit range for committed
+  secrets and fails the PR if it finds one. Rotate anything it flags —
+  rewriting the branch alone does not un-leak a credential.
+* `.github/workflows/semgrep.yml` runs the Semgrep `p/default` static-analysis
+  ruleset over the PR and fails on any blocking finding. Fix the finding; if it
+  is a genuine false positive, silence that one line with a
+  `# nosemgrep: <rule-id>` comment and say why in the PR description.
 
 ## What a change has to preserve
 

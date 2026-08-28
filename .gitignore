@@ -6,6 +6,7 @@
 !.github/
 !.codespellrc
 !.markdownlint.json
+!.markdownlint-cli2.jsonc
 !.markdownlintignore
 
 /target/
