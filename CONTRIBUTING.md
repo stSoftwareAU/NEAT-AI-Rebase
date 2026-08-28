@@ -11,7 +11,7 @@ Run the same gate CI runs:
 It needs the sibling `../NEAT-AI-core` checkout, `shellcheck`, and (optionally)
 `cargo-deny`. Everything else is plain `cargo`.
 
-CI adds two gates `quality.sh` cannot run locally:
+CI adds three gates `quality.sh` cannot run locally:
 
 * `.github/workflows/gitleaks.yml` scans the PR's commit range for committed
   secrets and fails the PR if it finds one. Rotate anything it flags —
@@ -20,6 +20,13 @@ CI adds two gates `quality.sh` cannot run locally:
   ruleset over the PR and fails on any blocking finding. Fix the finding; if it
   is a genuine false positive, silence that one line with a
   `# nosemgrep: <rule-id>` comment and say why in the PR description.
+* `.github/workflows/dependency-review.yml` diffs the dependencies the PR adds
+  against GitHub's advisory database and fails on any advisory, at any
+  severity. It overlaps `cargo deny check` deliberately: cargo-deny audits the
+  whole resolved graph from RustSec, this reports only what the PR introduces,
+  and pinned GitHub Actions are covered too. Upgrade past the advisory; if it
+  is genuinely inapplicable, allow that one ID with `allow-ghsas` in the
+  workflow and say why in the PR description.
 
 ## What a change has to preserve
 

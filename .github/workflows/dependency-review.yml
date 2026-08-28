@@ -1,0 +1,47 @@
+# Dependency Review for NEAT-AI-Rebase (Issue #15).
+#
+# Blocks a pull request that introduces a dependency with a known GitHub
+# Advisory. It complements — it does not duplicate — the `cargo deny check`
+# step in `ci.yml`: cargo-deny audits the whole resolved graph against the
+# RustSec advisory database, while this gate diffs the base branch against the
+# head and reports only what the PR itself adds, using GitHub's own advisory
+# data. A vulnerable crate that lands here fails the PR twice, which is the
+# intent.
+#
+# Third-party actions are pinned to 40-character commit SHAs, matching
+# `ci.yml`, `gitleaks.yml` and `semgrep.yml`, so a hijacked tag cannot execute
+# here. `contents: read` is the whole permission set the review API needs; the
+# job deliberately does not take `pull-requests: write`, so it cannot post
+# comments and cannot be used to write to the PR. Findings appear in the job
+# log and in the check's failure.
+name: Dependency Review
+
+on:
+  pull_request:
+    branches: ["*"]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The action reads the base and head SHAs from the event payload and
+      # queries the dependency-review API; it never needs to push or fetch, so
+      # the checkout credentials are dropped as in `ci.yml` and `semgrep.yml`.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # `fail-on-severity` is stated rather than left implicit: any advisory,
+      # at any severity, fails the PR. Silence a genuine false positive with
+      # `allow-ghsas` and say why in the PR description — do not weaken this
+      # threshold.
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: low
