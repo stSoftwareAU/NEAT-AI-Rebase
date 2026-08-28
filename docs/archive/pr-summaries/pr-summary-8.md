@@ -53,7 +53,7 @@ sequenceDiagram
     O->>L: write_bundle(bundle.json)
     O->>P: fetch champion again → B
     O->>R: --champion B --enhancements bundle.json
-    R->>R: absent already? → alreadyPresent; else replay onto a clone of B
+    R->>R: absent already? → alreadyPresent, else replay onto a clone of B
     R->>S: score B and every rebased candidate
     S-->>R: verdict
     R-->>O: population-candidate.json, only when B + Δ beat B
