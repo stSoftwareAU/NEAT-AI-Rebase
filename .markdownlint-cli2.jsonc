@@ -1,0 +1,35 @@
+// markdownlint-cli2 configuration for NEAT-AI-Rebase (Issue #14).
+// Keeps the gate light-touch: prose-style rules that frequently produce
+// noise on existing PR-summary docs and tables are disabled, while
+// structural rules (heading hierarchy, list indentation, code-block
+// fencing, etc.) stay enabled.
+{
+  "globs": [
+    "**/*.md"
+  ],
+  "ignores": [
+    "target/**",
+    "node_modules/**",
+    ".git/**",
+    // Historical PR summary docs — committed as point-in-time snapshots
+    // and not retroactively reformatted. Both globs are listed because
+    // the canonical home moved from `docs/` root to
+    // `docs/archive/pr-summaries/`.
+    "docs/pr-summary-*.md",
+    "docs/archive/pr-summaries/pr-summary-*.md"
+  ],
+  "config": {
+    "default": true,
+    // Long lines are common in tables and fenced code blocks.
+    "MD013": false,
+    // Tables in this repo use the compact style without padding spaces.
+    "MD060": false,
+    // Allow inline HTML (e.g. <details>, <summary>, <br>).
+    "MD033": false,
+    // Allow duplicate headings across H2 sub-sections (PR summaries reuse
+    // "## Summary" / "## Test Plan" patterns).
+    "MD024": { "siblings_only": true },
+    // First line need not be a top-level heading (PR summaries lead with H2).
+    "MD041": false
+  }
+}
