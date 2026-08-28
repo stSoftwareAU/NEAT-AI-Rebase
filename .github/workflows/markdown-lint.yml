@@ -1,0 +1,50 @@
+# Markdown lint for NEAT-AI-Rebase (Issue #16).
+#
+# Runs the same `markdownlint-cli2` the repository already configures in
+# `.markdownlint-cli2.jsonc` (globs, ignores and rule set all come from that
+# file, so CI and a local run cannot drift). Third-party actions are pinned to
+# 40-character commit SHAs, matching `ci.yml`, and the linter itself is pinned
+# to an exact npm version so a hijacked release cannot execute here.
+name: Markdown Lint
+
+on:
+  pull_request:
+    branches: ["*"]
+  push:
+    branches:
+      - Develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: markdown-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  markdownlint:
+    name: Markdown Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # The linter reads the checkout and nothing else — no fetch, no push —
+      # so no git credential needs to survive this step.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "lts/*"
+
+      - name: Install markdownlint-cli2
+        # Exact version, not a range: an unpinned `npm install -g` would let a
+        # future release change what this gate enforces without a diff.
+        run: npm install -g markdownlint-cli2@0.23.2
+
+      - name: Run markdownlint-cli2
+        run: markdownlint-cli2
