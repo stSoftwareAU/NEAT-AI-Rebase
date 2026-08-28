@@ -11,7 +11,7 @@ Run the same gate CI runs:
 It needs the sibling `../NEAT-AI-core` checkout, `shellcheck`, and (optionally)
 `cargo-deny`. Everything else is plain `cargo`.
 
-CI adds three gates `quality.sh` cannot run locally:
+CI adds four gates `quality.sh` cannot run locally:
 
 * `.github/workflows/gitleaks.yml` scans the PR's commit range for committed
   secrets and fails the PR if it finds one. Rotate anything it flags —
@@ -27,6 +27,12 @@ CI adds three gates `quality.sh` cannot run locally:
   and pinned GitHub Actions are covered too. Upgrade past the advisory; if it
   is genuinely inapplicable, allow that one ID with `allow-ghsas` in the
   workflow and say why in the PR description.
+* `.github/workflows/markdown-lint.yml` runs `markdownlint-cli2` over every
+  Markdown file and fails on any violation. It needs no configuration flags —
+  the globs, ignores and rule set all live in `.markdownlint-cli2.jsonc`, so
+  `npx markdownlint-cli2@0.23.2` reproduces the CI result exactly. Fix the
+  finding; disable a rule in that config only when it is genuinely noisy for
+  this repository, and say why in the PR description.
 
 ## What a change has to preserve
 
