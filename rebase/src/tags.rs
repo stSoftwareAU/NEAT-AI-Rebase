@@ -15,8 +15,12 @@
 //! the Forests side contributed is recorded in the `rebase` tag rather than by
 //! overwriting the champion's own provenance.
 //!
-//! Deliberately dropped on serialise, following Ockham: creature-level `uuid`
-//! and `memetic`. The structure changed, so either would be a lie.
+//! Creature-level `uuid` never survives: `CreatureExport` does not model it,
+//! so it is gone by the time anything here runs. The structure changed, so
+//! carrying it forward would have been a lie in any case. `memetic` is a
+//! modelled field and does survive a Forest graft — the Ockham path clears it
+//! explicitly (`ockham.rs`), and GRQ-sampler's check-in guard strips both
+//! (GRQ #4216), so nothing downstream reads a stale one.
 
 use std::collections::{BTreeMap, HashSet};
 
@@ -228,7 +232,13 @@ pub struct RebaseStamp<'a> {
 /// is the one that says publishing that creature alone would have been a loss.
 pub fn rebase_message(stamp: &RebaseStamp<'_>) -> String {
     format!(
-        "🪢 Rebase · {} {} from {} · score: {:.6} (+{:.2e} vs champion, +{:.2e} vs source)",
+        // `{:+.2e}` carries its own sign. The gain over the champion is always
+        // positive — nothing else is emitted — but the gain over the source is
+        // routinely negative and says something worth reading when it is: the
+        // donor scored higher on its own opening creature than the rebased
+        // candidate does on the current champion. A hardcoded `+` printed that
+        // as `+-2.29e-6`.
+        "🪢 Rebase · {} {} from {} · score: {:.6} ({:+.2e} vs champion, {:+.2e} vs source)",
         stamp.applied,
         if stamp.applied == 1 {
             "enhancement"
@@ -373,7 +383,25 @@ mod tests {
             source: "neat-ai-forests",
         });
         assert!(m.contains("1 enhancement from neat-ai-forests"), "{m}");
-        assert!(m.contains("vs champion"), "{m}");
-        assert!(m.contains("vs source"), "{m}");
+        assert!(m.contains("+1.00e-1 vs champion"), "{m}");
+        assert!(m.contains("+5.00e-2 vs source"), "{m}");
+    }
+
+    /// A rebased candidate routinely scores below the donor's own claim — the
+    /// donor measured itself on an older, easier opening creature. The message
+    /// has to report that as a loss, not render it as `+-2.29e-6`.
+    #[test]
+    fn a_candidate_below_the_source_reads_as_a_loss_against_it() {
+        let m = rebase_message(&RebaseStamp {
+            score: 0.4,
+            error: 0.6,
+            champion_score: 0.39,
+            source_score: 0.45,
+            applied: 2,
+            label: "bundle",
+            source: "harvest/best.json",
+        });
+        assert!(m.contains("-5.00e-2 vs source"), "{m}");
+        assert!(!m.contains("+-"), "a sign is never printed twice: {m}");
     }
 }

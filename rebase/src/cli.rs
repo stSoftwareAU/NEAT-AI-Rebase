@@ -21,6 +21,11 @@
 //! | `experiments.jsonl` | always — append-only journal for unattended diagnostics |
 //! | `scoring/` | always — the creature files handed to the scorer, kept for diagnosis |
 //!
+//! `population-candidate.json` is a publishable population member, not bare
+//! topology: it carries the champion's creature-level and per-neuron tags,
+//! reconciled against the neurons that survived, with `score`, `error` and a
+//! `rebase` summary stamped from this run's own verdict (Issue #48).
+//!
 //! Neither the champion file nor any enhancement file is ever written to.
 //!
 //! ## Exit codes
@@ -50,6 +55,7 @@ use crate::enhancement::{Enhancement, EnhancementBundle};
 use crate::harvest::harvest_delta;
 use crate::journal::{Journal, Record};
 use crate::scorer::{DirectoryScorer, ExternalScorer, ScorerMode, Verdict, judge};
+use crate::tags::{CreatureMeta, RebaseStamp};
 
 /// Exit code: a verified improvement was emitted.
 pub const EXIT_IMPROVED: i32 = 0;
@@ -229,7 +235,13 @@ pub struct RebaseSummary {
     /// The authoritative verdict, when scoring ran.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verdict: Option<Verdict>,
-    /// Checksum of the emitted population candidate, when one was emitted.
+    /// Checksum of the emitted `population-candidate.json` **as written**,
+    /// tags included, when one was emitted.
+    ///
+    /// Hash the file to check it. This is deliberately not the canonical
+    /// creature checksum the verdict was gated on — that one is
+    /// `verdict.winner.checksum`, and the two differ by exactly the tags,
+    /// mirroring `champion_file_checksum` against `champion_checksum`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emitted_checksum: Option<String>,
 }
@@ -280,7 +292,7 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
         .map_err(|e| RunError::failure(format!("{}: {e}", cli.output_dir.display())))?;
     let journal = Journal::new(cli.output_dir.join("experiments.jsonl"));
 
-    let (champion, champion_file_checksum) = load_champion(&cli.champion)?;
+    let (champion, champion_file_checksum, champion_meta) = load_champion(&cli.champion)?;
     let corpus = corpus_info(
         &cli.training_data,
         &TrainingDataConfig::new(champion.input, champion.output),
@@ -320,6 +332,13 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
     }
     let producer = enhancements[0].meta.producer.clone();
     let opening_checksum = enhancements[0].meta.base_checksum.clone();
+    // The score of the creature the discoveries came from, as its producer
+    // measured it. Read here because `--enhancements` and `--harvest-from`
+    // both land it in the same place: a harvest fills it from the donor's own
+    // `score` tag, a bundle from what the producer claimed. It goes into the
+    // `rebase` tag so a reader can see that publishing that creature on its
+    // own would have been a loss.
+    let source_score = enhancements[0].meta.improved_score;
 
     let outcome = rebase(&RebaseRequest {
         champion: &champion,
@@ -448,7 +467,9 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
             let json = creature_to_json(&creature.creature)
                 .map_err(|e| RunError::failure(e.to_string()))?;
             // Last gate before anything is published: what is about to be
-            // written must be the creature that was actually scored.
+            // written must be the creature that was actually scored. The gate
+            // stays over the untagged bytes, because those are the bytes the
+            // scorer saw — tags carry provenance and never reach the network.
             let checksum = sha256_hex(json.as_bytes());
             if checksum != winner.checksum {
                 return Err(RunError::failure(format!(
@@ -456,10 +477,44 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
                     checksum, winner.checksum
                 )));
             }
+            // Write the creature back with its tags, not as bare topology.
+            //
+            // Every consumer reads the score off the creature it is about to
+            // publish, and GRQ-sampler's check-in guard additionally refuses a
+            // creature that arrived with a better score but lost its discovery
+            // and intelligent-design provenance. A bare `creature_to_json` has
+            // neither: `CreatureExport` does not model `tags`, so serialising
+            // through it drops the authoritative numbers this binary just
+            // measured along with every per-neuron tag the champion carried.
+            //
+            // The tags come from the champion — that is the creature being
+            // improved and the lineage the population tracks — reconciled
+            // against the neurons that actually survived, and then stamped
+            // with this run's own numbers.
+            let mut meta = champion_meta.clone();
+            meta.retain_neurons(&creature.creature);
+            meta.stamp(&RebaseStamp {
+                score: winner.result.score,
+                error: winner.result.error,
+                champion_score: verdict.baseline.score,
+                source_score,
+                applied: winner.applied_ids.len(),
+                label: &winner.label,
+                source: &summary.producer,
+            });
+            let tagged = meta
+                .serialize_with(&creature.creature, false)
+                .map_err(RunError::failure)?;
             let path = cli.output_dir.join("population-candidate.json");
-            std::fs::write(&path, json)
+            std::fs::write(&path, &tagged)
                 .map_err(|e| RunError::failure(format!("{}: {e}", path.display())))?;
-            Some(checksum)
+            // Two checksums again, for the same reason `load_champion` keeps
+            // two: `checksum` above identifies the *creature* and is what the
+            // scorer's verdict is gated on; this one identifies the *bytes a
+            // caller receives*, which now carry the tags. A caller checking
+            // what it was handed hashes the file, so that is what
+            // `emittedChecksum` has to be.
+            Some(sha256_hex(tagged.as_bytes()))
         }
         None => None,
     };
@@ -666,18 +721,23 @@ fn screen(
 }
 
 /// Read the champion and its file checksum. The file is never written to.
-fn load_champion(path: &Path) -> Result<(CreatureExport, String), RunError> {
+fn load_champion(path: &Path) -> Result<(CreatureExport, String, CreatureMeta), RunError> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| RunError::incompatible(format!("{}: {e}", path.display())))?;
     let creature = parse_creature_json(&text)
         .map_err(|e| RunError::incompatible(format!("{}: {e}", path.display())))?;
     validate_source_creature(&creature)
         .map_err(|e| RunError::incompatible(format!("{}: {e}", path.display())))?;
+    // `CreatureExport` models the fields it validates and drops the rest, so
+    // the champion's tags have to be lifted out of the raw text here — this is
+    // the only point at which they still exist — and carried to the emit path.
+    // Everything downstream works on the parsed creature.
+    let meta = CreatureMeta::from_json(&text);
     // Two checksums, deliberately: the engine's canonical one identifies the
     // *creature*, and is what a candidate is compared against; this one
     // identifies the *bytes on disk*, which is what a caller comparing against
     // the population sees. They differ whenever the file was pretty-printed.
-    Ok((creature, sha256_hex(text.as_bytes())))
+    Ok((creature, sha256_hex(text.as_bytes()), meta))
 }
 
 /// Read a bundle, a single enhancement, or a directory of either.
@@ -729,7 +789,9 @@ mod tests {
     use crate::fixtures::{evolved_descendant, linear_hidden_creature};
     use crate::patch::{Node, Patch, Provenance};
     use crate::scorer::ScriptedScorer;
+    use crate::tags::Tag;
     use clap::CommandFactory;
+    use std::collections::HashSet;
 
     struct Harness {
         _tmp: tempfile::TempDir,
@@ -815,6 +877,25 @@ mod tests {
         serde_json::from_str(&std::fs::read_to_string(dir.join("rebase.json")).unwrap()).unwrap()
     }
 
+    /// Rewrite a champion file with the tags a real population member carries.
+    ///
+    /// `harness` writes bare topology, which is precisely the creature that has
+    /// no provenance to lose — useless for proving that provenance survives.
+    fn tag_champion_file(path: &Path) {
+        let mut doc: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        doc["tags"] = serde_json::json!([
+            { "name": "score", "value": "0.111111" },
+            { "name": "lineage", "value": "champion-lineage" },
+        ]);
+        for n in doc["neurons"].as_array_mut().unwrap() {
+            if n["uuid"] == "h1" {
+                n["tags"] = serde_json::json!([{ "name": "discovery", "value": "seed-h1" }]);
+            }
+        }
+        std::fs::write(path, serde_json::to_string(&doc).unwrap()).unwrap();
+    }
+
     #[test]
     fn end_to_end_emits_a_population_candidate_when_the_scorer_agrees() {
         let champion = evolved_descendant(2.0, 0.5);
@@ -841,6 +922,82 @@ mod tests {
             h.cli.output_dir.join("experiments.jsonl").exists(),
             "the journal is always written"
         );
+    }
+
+    /// Issue #4438: what is published must be a creature, not bare topology.
+    ///
+    /// Every consumer reads the score off the artefact it is about to check in,
+    /// and GRQ-sampler's guard additionally refuses one that arrived with a
+    /// better score but lost its lineage. Before the fix this file had no
+    /// `tags` key at all, so both checks failed on every successful rebase.
+    #[test]
+    fn the_emitted_candidate_carries_the_score_and_the_champions_provenance() {
+        let champion = evolved_descendant(2.0, 0.5);
+        let h = harness(&champion);
+        tag_champion_file(&h.cli.champion);
+        write_bundle(
+            &h.enhancements.join("bundle.json"),
+            vec![forest(&h.corpus_identity, 1, 0.25)],
+        );
+
+        let scorer = ScriptedScorer::flat(0.50).with("single-00", 0.60);
+        assert_eq!(run_with(&h.cli, Some(&scorer)).unwrap(), EXIT_IMPROVED);
+
+        let text =
+            std::fs::read_to_string(h.cli.output_dir.join("population-candidate.json")).unwrap();
+        let meta = CreatureMeta::from_json(&text);
+
+        // The score is the one the judge measured, and it has replaced the
+        // champion's stale tag rather than sitting beside it.
+        let winner = summary(&h.cli.output_dir)
+            .verdict
+            .unwrap()
+            .winner
+            .expect("a winner");
+        let emitted_score = meta.score().expect("a numeric score tag");
+        assert!((emitted_score - winner.result.score).abs() < 1e-12);
+        assert!((emitted_score - 0.60).abs() < 1e-12);
+        assert_eq!(
+            meta.tags.iter().filter(|t| t.name == "score").count(),
+            1,
+            "upserted, not appended"
+        );
+        assert!(
+            (meta
+                .get("error")
+                .expect("an error tag")
+                .parse::<f64>()
+                .unwrap()
+                - winner.result.error)
+                .abs()
+                < 1e-12
+        );
+        assert!(
+            meta.get("rebase")
+                .expect("a rebase tag")
+                .starts_with("🪢 Rebase"),
+        );
+
+        // The champion's own provenance rides along, creature-level and
+        // per-neuron.
+        assert_eq!(meta.get("lineage"), Some("champion-lineage"));
+        assert_eq!(
+            meta.neuron_tags.get("h1").map(Vec::as_slice),
+            Some(&[Tag::new("discovery", "seed-h1")][..]),
+        );
+
+        // And no tag names a neuron the rebase left behind.
+        let creature = parse_creature_json(&text).expect("a valid creature");
+        let present: HashSet<&str> = creature.neurons.iter().map(|n| n.uuid.as_str()).collect();
+        for uuid in meta.neuron_tags.keys() {
+            assert!(
+                present.contains(uuid.as_str()),
+                "{uuid} is tagged but no longer in the creature"
+            );
+        }
+        // The graft really did happen — otherwise this test would pass on a
+        // creature that was never rebased at all.
+        assert!(creature.neurons.len() > champion.neurons.len());
     }
 
     #[test]
