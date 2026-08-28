@@ -1,0 +1,73 @@
+# Cargo security audit for NEAT-AI-Rebase (Issue #17).
+#
+# Audits the committed `Cargo.lock` against the RustSec advisory database on
+# every pull request *and* on a weekly schedule. The schedule is the part
+# `ci.yml` cannot cover: `cargo deny check` only runs when someone opens a PR,
+# so an advisory published against an already-resolved dependency goes
+# unnoticed until the next PR happens to land. This job finds it on the
+# following Monday with no code change at all.
+#
+# `cargo audit` reads `Cargo.lock` directly — it never resolves or builds the
+# workspace — so the `../NEAT-AI-core` sibling checkout that `ci.yml` needs is
+# deliberately absent here. Third-party actions are pinned to 40-character
+# commit SHAs, matching `ci.yml`, `dependency-review.yml` and `markdown-lint.yml`,
+# so a hijacked tag cannot execute here, and `contents: read` is the whole
+# permission set: the job reads the checkout and writes nothing back.
+name: Cargo Audit
+
+on:
+  pull_request:
+    branches: ["*"]
+  schedule:
+    # 06:00 UTC every Monday.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cargo-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  audit:
+    name: Cargo Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # The audit only reads the working tree — no fetch, no push — so no git
+      # credential needs to survive this step.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Same pin and same version as `ci.yml`. `rust-toolchain.toml` pins the
+      # channel for anything run inside the checkout, so installing `stable`
+      # here would just make rustup download 1.98.0 a second time.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable, frozen 2026-05-18
+        with:
+          toolchain: "1.98.0"
+
+      # Prebuilt binary at an exact version, the way `ci.yml` installs
+      # cargo-deny. `cargo install cargo-audit` would rebuild the auditor from
+      # source on every run, and an unpinned version would let a future release
+      # change what this gate enforces without a diff.
+      - name: Install cargo-audit (prebuilt binary)
+        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2.81.10
+        with:
+          tool: cargo-audit@0.22.2
+
+      # Exits non-zero on any RustSec advisory affecting a locked dependency.
+      # cargo-audit does not read `deny.toml`: an advisory that genuinely
+      # cannot be fixed is silenced by ID in `.cargo/audit.toml`
+      # (`[advisories] ignore`), and the same ID belongs in `deny.toml` so both
+      # gates agree. No such exception exists today.
+      - name: cargo audit
+        run: cargo audit
