@@ -132,6 +132,57 @@ neat_ai_rebase --champion <FILE> \
 > never re-reads it. Handing it a champion that is already stale reintroduces
 > the race it exists to remove.
 
+### Reading the journals back
+
+```text
+neat_ai_rebase report <experiments.jsonl>...
+```
+
+Every run appends to `experiments.jsonl`; `report` reads one or many of those
+journals and prints what a soak actually did. It writes nothing, scores
+nothing, and exits `0`.
+
+```text
+Runs by outcome
+  improved                                 4
+  noImprovement                            3
+  nothingToDo                             16
+  incompatible                             1
+  dryRun                                   0
+  failed                                   0
+  no result recorded                       1
+
+Best candidate vs champion
+  runs scored                              7
+  runs with a winner                       4
+  minimum                                 -1.300e-2
+  median                                  +8.000e-4
+  maximum                                 +2.190e-2
+
+Screen vs the authoritative pass
+  runs screened                            8
+  screen kept nothing                      1
+  full pass confirmed                      4
+  full pass rejected                       3
+  outcome not recorded                     0
+```
+
+The outcomes are deliberately never collapsed. "23 runs, 4 wins" hides the
+answer: 16 `nothingToDo` runs mean the fleet had already absorbed the work,
+which says the opposite of 16 `noImprovement` runs — those would mean the
+corpus kept rejecting what was rebased. The same applies to the screen: one
+that never disagrees with the full pass is not earning its keep, and one that
+disagrees constantly is miscalibrated.
+
+Three rules the reader keeps:
+
+- **A partial last line is normal**, not fatal. A run killed mid-write leaves
+  one; it is counted under `unreadable lines` and shown, never hidden.
+- **Absent is not zero.** A field an older record does not carry is left out of
+  the numbers rather than counted as `0` — a verdict with no `delta` shows `no
+  delta recorded`, not a gain of nothing.
+- **An unreadable *file* still fails loudly**, exit `1`, naming the journal.
+
 ### Screening
 
 Scoring is the expensive part, and most enhancements do not earn their place.
@@ -155,7 +206,7 @@ one stratum without the held-out confirmation is a trap; see
 | --- | --- |
 | `population-candidate.json` | **only** when the scorer confirmed an improvement over the champion |
 | `rebase.json` | always — the full summary, verdict included |
-| `experiments.jsonl` | always — append-only journal for unattended diagnostics |
+| `experiments.jsonl` | always — append-only journal for unattended diagnostics, read back by `neat_ai_rebase report` |
 | `scoring/` | always — the creature files handed to the scorer, one per cohort member, kept for diagnosis |
 
 | Exit code | Meaning |

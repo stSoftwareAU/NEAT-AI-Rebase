@@ -135,3 +135,10 @@ own numbers and identity.
 
 `experiments.jsonl` carries the same facts as append-only records, so a run
 that died part-way still leaves everything it had decided up to that point.
+
+`neat_ai_rebase report <experiments.jsonl>...` reads those journals back over a
+whole soak. It segments the file into runs — a `result` record closes one, an
+`opening` starts one — so a reused output directory reports as the several runs
+it holds, and a run that died before its `result` is reported as exactly that
+rather than merged into the run beside it. The truncated last line such a death
+leaves is counted and shown, never treated as the end of the journal.

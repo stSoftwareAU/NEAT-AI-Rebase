@@ -438,14 +438,15 @@ fn the_cli_publishes_b_plus_delta_and_leaves_its_inputs_alone() {
     let champion_text_before = std::fs::read_to_string(&champion_path).unwrap();
     let output_dir = tmp.path().join("out");
     let cli = Cli {
-        champion: champion_path.clone(),
+        command: None,
+        champion: Some(champion_path.clone()),
         enhancements: Some(bundle_path.clone()),
         harvest_from: None,
         screen_sample_rate: None,
         screen_held_out: true,
-        training_data: training,
+        training_data: Some(training),
         scorer: None,
-        output_dir: output_dir.clone(),
+        output_dir: Some(output_dir.clone()),
         scorer_args: Vec::new(),
         min_improvement: 1e-9,
         max_candidates: 8,
