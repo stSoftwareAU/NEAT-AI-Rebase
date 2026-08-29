@@ -18,6 +18,12 @@ use serde::{Deserialize, Serialize};
 use crate::engine::{EnhancementOutcome, RebaseOutcome};
 use crate::scorer::Verdict;
 
+/// Label prefix of the [`Record::Dropped`] record each screen phase writes.
+///
+/// Shared between the writer and `neat_ai_rebase report`, so a reader can tell
+/// that a run screened without matching a string the writer is free to change.
+pub const SCREEN_PHASE_LABEL_PREFIX: &str = "screen-phase-";
+
 /// One line of the journal.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(

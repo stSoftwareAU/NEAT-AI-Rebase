@@ -26,6 +26,7 @@
 //! | construct the candidate | [`forest`], [`ockham`] | never mutate the champion |
 //! | build a cohort | [`engine`] | baseline, singles, prefixes, full bundle; de-duplicated |
 //! | decide | [`scorer`] | NEAT-AI-scorer, one call, fail closed |
+//! | read it back | [`report`] | `neat_ai_rebase report <experiments.jsonl>...`, over one run or a whole soak |
 //!
 //! ## The rules that do not bend
 //!
@@ -82,6 +83,7 @@ pub mod ockham;
 pub mod patch;
 pub mod patch_log;
 pub mod prune_log;
+pub mod report;
 pub mod scorer;
 pub mod tags;
 

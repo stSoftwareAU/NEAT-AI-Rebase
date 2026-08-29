@@ -3,7 +3,13 @@
 //! ```text
 //! neat_ai_rebase --champion <file> --enhancements <file-or-dir> \
 //!                --training-data <dir> --scorer <path> --output-dir <dir>
+//!
+//! neat_ai_rebase report <experiments.jsonl>...
 //! ```
+//!
+//! The `report` subcommand reads the journals earlier runs wrote and prints
+//! what they did — see [`crate::report`]. It writes nothing, scores nothing,
+//! and exits `0`; the flags above are not required with it.
 //!
 //! ## The one thing a caller must get right
 //!
@@ -43,7 +49,7 @@
 
 use std::path::{Path, PathBuf};
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use neat_core::training_data::TrainingDataConfig;
 use neat_core::{CreatureExport, creature_to_json, parse_creature_json};
 use serde::{Deserialize, Serialize};
@@ -59,6 +65,12 @@ use crate::tags::{CreatureMeta, RebaseStamp};
 
 /// Exit code: a verified improvement was emitted.
 pub const EXIT_IMPROVED: i32 = 0;
+/// Exit code: a subcommand that only reads did what it was asked.
+///
+/// The same number as [`EXIT_IMPROVED`], deliberately named apart: `report`
+/// reads journals and decides nothing, so "improved" would be a lie about what
+/// a `0` from it means.
+pub const EXIT_OK: i32 = 0;
 /// Exit code: operational or scorer failure.
 pub const EXIT_FAILURE: i32 = 1;
 /// Exit code: no improvement, or nothing left to do. A successful outcome.
@@ -79,12 +91,22 @@ the start, and never re-reads it. Handing it a champion that is already stale re
 race it exists to remove.\n\n\
 Exit codes: 0 improvement emitted (or, with --dry-run, candidates validated); 3 no improvement \
 or nothing to do (a successful, non-destructive outcome); 4 incompatible input; 1 operational \
-or scorer failure."
+or scorer failure.\n\n\
+`neat_ai_rebase report <experiments.jsonl>...` reads those journals back and prints what a soak \
+did, without running anything.",
+    subcommand_negates_reqs = true,
+    args_conflicts_with_subcommands = true
 )]
 pub struct Cli {
+    /// Read `experiments.jsonl` journals back instead of running a rebase.
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     /// The **freshly fetched** current global champion. Never written to.
-    #[arg(long, value_name = "FILE")]
-    pub champion: PathBuf,
+    ///
+    /// Required for a rebase run; absent when a subcommand was given.
+    #[arg(long, value_name = "FILE", required = true)]
+    pub champion: Option<PathBuf>,
 
     /// An enhancement bundle, a single enhancement, or a directory of either.
     /// Directory members are read in file-name order. Never written to.
@@ -114,8 +136,10 @@ pub struct Cli {
     /// Directory of `.bin` training data — the corpus the verdict is measured
     /// on, and the source of the corpus identity every enhancement is checked
     /// against.
-    #[arg(long, value_name = "DIR")]
-    pub training_data: PathBuf,
+    ///
+    /// Required for a rebase run; absent when a subcommand was given.
+    #[arg(long, value_name = "DIR", required = true)]
+    pub training_data: Option<PathBuf>,
 
     /// The NEAT-AI-scorer binary (`rust_scorer`). Not required with
     /// `--dry-run`.
@@ -124,8 +148,10 @@ pub struct Cli {
 
     /// Where `population-candidate.json`, `rebase.json` and
     /// `experiments.jsonl` are written.
-    #[arg(long, value_name = "DIR")]
-    pub output_dir: PathBuf,
+    ///
+    /// Required for a rebase run; absent when a subcommand was given.
+    #[arg(long, value_name = "DIR", required = true)]
+    pub output_dir: Option<PathBuf>,
 
     /// Extra argument passed verbatim to the scorer. Repeatable.
     #[arg(long = "scorer-arg", value_name = "ARG", allow_hyphen_values = true)]
@@ -169,6 +195,61 @@ pub struct Cli {
     /// drops most of the accidents before they cost a full-corpus pass.
     #[arg(long, default_value_t = true, value_name = "BOOL", action = clap::ArgAction::Set)]
     pub screen_held_out: bool,
+}
+
+/// A subcommand that reads what earlier runs wrote, rather than running one.
+#[derive(Debug, Clone, PartialEq, Subcommand)]
+pub enum Command {
+    /// Summarise one or more `experiments.jsonl` journals.
+    ///
+    /// Reads them back and prints how many runs rebased at all, how many of
+    /// those the corpus confirmed, the spread of the best candidate's gain over
+    /// the champion, what became of each enhancement, and how far the cheap
+    /// screen agreed with the authoritative pass. Nothing is written and
+    /// nothing is scored.
+    Report {
+        /// The journals to read. A partial last line — a run killed mid-write
+        /// — is counted and reported, never fatal.
+        #[arg(value_name = "EXPERIMENTS.JSONL", required = true)]
+        journals: Vec<PathBuf>,
+    },
+}
+
+impl Cli {
+    /// The freshly fetched champion.
+    ///
+    /// # Errors
+    ///
+    /// Names the missing flag. `clap` enforces it for a rebase run; a library
+    /// caller that built the struct itself gets a loud failure rather than a
+    /// guess.
+    fn champion_path(&self) -> Result<&Path, RunError> {
+        self.champion
+            .as_deref()
+            .ok_or_else(|| RunError::incompatible("--champion is required"))
+    }
+
+    /// The corpus directory.
+    ///
+    /// # Errors
+    ///
+    /// Names the missing flag.
+    fn training_data_dir(&self) -> Result<&Path, RunError> {
+        self.training_data
+            .as_deref()
+            .ok_or_else(|| RunError::incompatible("--training-data is required"))
+    }
+
+    /// Where the outputs are written.
+    ///
+    /// # Errors
+    ///
+    /// Names the missing flag.
+    fn output_directory(&self) -> Result<&Path, RunError> {
+        self.output_dir
+            .as_deref()
+            .ok_or_else(|| RunError::incompatible("--output-dir is required"))
+    }
 }
 
 /// One enhancement's fate, as written to `rebase.json`.
@@ -288,13 +369,25 @@ impl std::error::Error for RunError {}
 ///
 /// A [`RunError`] carrying the message and the exit code to use.
 pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, RunError> {
-    std::fs::create_dir_all(&cli.output_dir)
-        .map_err(|e| RunError::failure(format!("{}: {e}", cli.output_dir.display())))?;
-    let journal = Journal::new(cli.output_dir.join("experiments.jsonl"));
+    if let Some(Command::Report { journals }) = &cli.command {
+        // Reading decides nothing, so nothing is written and no scorer is
+        // needed. An unreadable *file* is still a loud failure — only an
+        // unreadable *line* is tolerated, and it is counted in the table.
+        print!(
+            "{}",
+            crate::report::report(journals).map_err(RunError::failure)?
+        );
+        return Ok(EXIT_OK);
+    }
+    let output_dir = cli.output_directory()?;
+    let training_data = cli.training_data_dir()?;
+    std::fs::create_dir_all(output_dir)
+        .map_err(|e| RunError::failure(format!("{}: {e}", output_dir.display())))?;
+    let journal = Journal::new(output_dir.join("experiments.jsonl"));
 
-    let (champion, champion_file_checksum, champion_meta) = load_champion(&cli.champion)?;
+    let (champion, champion_file_checksum, champion_meta) = load_champion(cli.champion_path()?)?;
     let corpus = corpus_info(
-        &cli.training_data,
+        training_data,
         &TrainingDataConfig::new(champion.input, champion.output),
     )
     .map_err(RunError::incompatible)?;
@@ -318,7 +411,7 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
             .map(|p| p.display().to_string())
             .unwrap_or_default();
         if cli.harvest_from.is_some() {
-            let journal = Journal::new(cli.output_dir.join("experiments.jsonl"));
+            let journal = Journal::new(output_dir.join("experiments.jsonl"));
             let _ = journal.append(&Record::Result {
                 status: "nothingToDo".into(),
                 detail: Some(format!("nothing in {source} that the champion lacks")),
@@ -399,13 +492,13 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
             ("nothingToDo", EXIT_NO_IMPROVEMENT)
         };
         summary.status = status.into();
-        finish(&cli.output_dir, &journal, &summary, status, None)?;
+        finish(output_dir, &journal, &summary, status, None)?;
         return Ok(code);
     }
 
     if cli.dry_run {
         summary.status = "dryRun".into();
-        finish(&cli.output_dir, &journal, &summary, "dryRun", None)?;
+        finish(output_dir, &journal, &summary, "dryRun", None)?;
         return Ok(EXIT_IMPROVED);
     }
 
@@ -440,15 +533,15 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
         .collect();
     if outcome.is_empty() {
         summary.status = "nothingToDo".into();
-        finish(&cli.output_dir, &journal, &summary, "nothingToDo", None)?;
+        finish(output_dir, &journal, &summary, "nothingToDo", None)?;
         return Ok(EXIT_NO_IMPROVEMENT);
     }
 
     let verdict = judge(
         scorer,
         &outcome,
-        &cli.training_data,
-        &cli.output_dir.join("scoring"),
+        training_data,
+        &output_dir.join("scoring"),
         cli.min_improvement,
         ScorerMode::Full,
     )
@@ -505,7 +598,7 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
             let tagged = meta
                 .serialize_with(&creature.creature, false)
                 .map_err(RunError::failure)?;
-            let path = cli.output_dir.join("population-candidate.json");
+            let path = output_dir.join("population-candidate.json");
             std::fs::write(&path, &tagged)
                 .map_err(|e| RunError::failure(format!("{}: {e}", path.display())))?;
             // Two checksums again, for the same reason `load_champion` keeps
@@ -527,7 +620,7 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
     summary.status = status.into();
     summary.verdict = Some(verdict);
     summary.emitted_checksum = emitted.clone();
-    finish(&cli.output_dir, &journal, &summary, status, emitted)?;
+    finish(output_dir, &journal, &summary, status, emitted)?;
     Ok(if status == "improved" {
         EXIT_IMPROVED
     } else {
@@ -653,6 +746,8 @@ fn screen(
     rate: f64,
     journal: &Journal,
 ) -> Result<RebaseOutcome, RunError> {
+    let output_dir = cli.output_directory()?;
+    let training_data = cli.training_data_dir()?;
     let mut kept: Vec<Enhancement> = enhancements.to_vec();
     let phases: &[u64] = if cli.screen_held_out { &[0, 1] } else { &[0] };
     for &phase in phases {
@@ -669,16 +764,12 @@ fn screen(
         // Stage and score directly. `judge` refuses a sampled mode outright —
         // correctly, it is the thing that decides — so the screen stages the
         // cohort itself and reads the baseline out of the raw results.
-        let staging = cli.output_dir.join(format!("screen-{phase}"));
+        let staging = output_dir.join(format!("screen-{phase}"));
         std::fs::create_dir_all(&staging)
             .map_err(|e| RunError::failure(format!("{}: {e}", staging.display())))?;
         crate::scorer::stage(&outcome, &staging).map_err(|e| RunError::failure(e.to_string()))?;
         let scores = scorer
-            .score_directory(
-                &staging,
-                &cli.training_data,
-                ScorerMode::Sample { rate, phase },
-            )
+            .score_directory(&staging, training_data, ScorerMode::Sample { rate, phase })
             .map_err(|e| RunError::failure(e.to_string()))?;
         let baseline = scores
             .get(crate::engine::BASELINE_LABEL)
@@ -691,7 +782,7 @@ fn screen(
             .filter_map(|c| kept.iter().find(|e| e.meta.id == c.applied_ids[0]).cloned())
             .collect();
         let _ = journal.append(&Record::Dropped {
-            label: format!("screen-phase-{phase}"),
+            label: format!("{}{phase}", crate::journal::SCREEN_PHASE_LABEL_PREFIX),
             reason: format!(
                 "{} of {} enhancements beat the champion alone",
                 survivors.len(),
@@ -827,14 +918,15 @@ mod tests {
         let enhancements = tmp.path().join("enhancements");
         Harness {
             cli: Cli {
-                champion: champion_path,
+                command: None,
+                champion: Some(champion_path),
                 enhancements: Some(enhancements.clone()),
                 harvest_from: None,
                 screen_sample_rate: None,
                 screen_held_out: true,
-                training_data: training,
+                training_data: Some(training),
                 scorer: None,
-                output_dir: tmp.path().join("out"),
+                output_dir: Some(tmp.path().join("out")),
                 scorer_args: Vec::new(),
                 min_improvement: 1e-9,
                 max_candidates: 8,
@@ -873,6 +965,20 @@ mod tests {
         std::fs::write(path, serde_json::to_string_pretty(&bundle).unwrap()).unwrap();
     }
 
+    /// The output directory of a CLI a test built, which always has one.
+    fn out(cli: &Cli) -> &Path {
+        cli.output_dir
+            .as_deref()
+            .expect("a test CLI is built with an output directory")
+    }
+
+    /// The champion file of a CLI a test built, which always has one.
+    fn champion_file(cli: &Cli) -> &Path {
+        cli.champion
+            .as_deref()
+            .expect("a test CLI is built with a champion")
+    }
+
     fn summary(dir: &Path) -> RebaseSummary {
         serde_json::from_str(&std::fs::read_to_string(dir.join("rebase.json")).unwrap()).unwrap()
     }
@@ -907,9 +1013,9 @@ mod tests {
         let code = run_with(&h.cli, Some(&scorer)).unwrap();
         assert_eq!(code, EXIT_IMPROVED);
 
-        let emitted = h.cli.output_dir.join("population-candidate.json");
+        let emitted = out(&h.cli).join("population-candidate.json");
         assert!(emitted.exists());
-        let s = summary(&h.cli.output_dir);
+        let s = summary(out(&h.cli));
         assert_eq!(s.status, "improved");
         assert_eq!(
             s.emitted_checksum.unwrap(),
@@ -919,7 +1025,7 @@ mod tests {
         assert!(verdict.improved());
         assert!((verdict.baseline.score - 0.50).abs() < 1e-12);
         assert!(
-            h.cli.output_dir.join("experiments.jsonl").exists(),
+            out(&h.cli).join("experiments.jsonl").exists(),
             "the journal is always written"
         );
     }
@@ -934,7 +1040,7 @@ mod tests {
     fn the_emitted_candidate_carries_the_score_and_the_champions_provenance() {
         let champion = evolved_descendant(2.0, 0.5);
         let h = harness(&champion);
-        tag_champion_file(&h.cli.champion);
+        tag_champion_file(champion_file(&h.cli));
         write_bundle(
             &h.enhancements.join("bundle.json"),
             vec![forest(&h.corpus_identity, 1, 0.25)],
@@ -943,13 +1049,12 @@ mod tests {
         let scorer = ScriptedScorer::flat(0.50).with("single-00", 0.60);
         assert_eq!(run_with(&h.cli, Some(&scorer)).unwrap(), EXIT_IMPROVED);
 
-        let text =
-            std::fs::read_to_string(h.cli.output_dir.join("population-candidate.json")).unwrap();
+        let text = std::fs::read_to_string(out(&h.cli).join("population-candidate.json")).unwrap();
         let meta = CreatureMeta::from_json(&text);
 
         // The score is the one the judge measured, and it has replaced the
         // champion's stale tag rather than sitting beside it.
-        let winner = summary(&h.cli.output_dir)
+        let winner = summary(out(&h.cli))
             .verdict
             .unwrap()
             .winner
@@ -1011,10 +1116,10 @@ mod tests {
         let scorer = ScriptedScorer::flat(0.80).with("single-00", 0.70);
         let code = run_with(&h.cli, Some(&scorer)).unwrap();
         assert_eq!(code, EXIT_NO_IMPROVEMENT);
-        assert!(!h.cli.output_dir.join("population-candidate.json").exists());
-        assert_eq!(summary(&h.cli.output_dir).status, "noImprovement");
+        assert!(!out(&h.cli).join("population-candidate.json").exists());
+        assert_eq!(summary(out(&h.cli)).status, "noImprovement");
         // The champion file is untouched.
-        let champion_now = std::fs::read_to_string(&h.cli.champion).unwrap();
+        let champion_now = std::fs::read_to_string(champion_file(&h.cli)).unwrap();
         assert_eq!(champion_now, creature_to_json(&champion).unwrap());
     }
 
@@ -1029,7 +1134,7 @@ mod tests {
             .failing(crate::scorer::ScorerError::Spawn("no such binary".into()));
         let err = run_with(&h.cli, Some(&scorer)).unwrap_err();
         assert_eq!(err.code, EXIT_FAILURE);
-        assert!(!h.cli.output_dir.join("population-candidate.json").exists());
+        assert!(!out(&h.cli).join("population-candidate.json").exists());
     }
 
     #[test]
@@ -1043,8 +1148,8 @@ mod tests {
         cli.dry_run = true;
         let code = run_with(&cli, None).unwrap();
         assert_eq!(code, EXIT_IMPROVED);
-        assert!(!cli.output_dir.join("population-candidate.json").exists());
-        let s = summary(&cli.output_dir);
+        assert!(!out(&cli).join("population-candidate.json").exists());
+        let s = summary(out(&cli));
         assert_eq!(s.status, "dryRun");
         assert!(s.verdict.is_none());
         assert_eq!(s.candidates.len(), 2, "baseline plus one candidate");
@@ -1061,8 +1166,8 @@ mod tests {
         // and journal, so an unattended host can be told why.
         let code = run_with(&h.cli, Some(&ScriptedScorer::flat(0.5))).unwrap();
         assert_eq!(code, EXIT_INCOMPATIBLE);
-        assert_eq!(summary(&h.cli.output_dir).status, "incompatible");
-        assert!(!h.cli.output_dir.join("population-candidate.json").exists());
+        assert_eq!(summary(out(&h.cli)).status, "incompatible");
+        assert!(!out(&h.cli).join("population-candidate.json").exists());
     }
 
     #[test]
@@ -1079,13 +1184,13 @@ mod tests {
         })
         .unwrap();
         let grafted = outcome.cohort[1].creature.clone();
-        std::fs::write(&h.cli.champion, creature_to_json(&grafted).unwrap()).unwrap();
+        std::fs::write(champion_file(&h.cli), creature_to_json(&grafted).unwrap()).unwrap();
         write_bundle(&h.enhancements.join("bundle.json"), vec![e]);
 
         let code = run_with(&h.cli, Some(&ScriptedScorer::flat(0.5))).unwrap();
         assert_eq!(code, EXIT_NO_IMPROVEMENT);
-        assert_eq!(summary(&h.cli.output_dir).status, "nothingToDo");
-        assert!(!h.cli.output_dir.join("population-candidate.json").exists());
+        assert_eq!(summary(out(&h.cli)).status, "nothingToDo");
+        assert!(!out(&h.cli).join("population-candidate.json").exists());
     }
 
     #[test]
@@ -1108,7 +1213,7 @@ mod tests {
         let mut cli = h.cli;
         cli.dry_run = true;
         run_with(&cli, None).unwrap();
-        let s = summary(&cli.output_dir);
+        let s = summary(out(&cli));
         assert_eq!(s.enhancements[0].id, a.meta.id);
         assert_eq!(s.enhancements[1].id, b.meta.id);
     }
@@ -1152,7 +1257,7 @@ mod tests {
         let scorer = ScriptedScorer::flat(0.50).with("single-00", 0.60);
         assert_eq!(run_with(&cli, Some(&scorer)).unwrap(), EXIT_IMPROVED);
 
-        let s = summary(&cli.output_dir);
+        let s = summary(out(&cli));
         assert_eq!(s.status, "improved");
         assert_eq!(
             s.enhancements.len(),
@@ -1160,7 +1265,7 @@ mod tests {
             "one patch harvested from the creature"
         );
         assert!(s.enhancements[0].producer.starts_with("harvest/"), "{s:?}");
-        assert!(cli.output_dir.join("population-candidate.json").exists());
+        assert!(out(&cli).join("population-candidate.json").exists());
     }
 
     #[test]
@@ -1170,13 +1275,13 @@ mod tests {
         let h = harness(&champion);
         let mut cli = h.cli.clone();
         cli.enhancements = None;
-        cli.harvest_from = Some(cli.champion.clone());
+        cli.harvest_from = Some(champion_file(&cli).to_path_buf());
         let code = run_with(&cli, Some(&ScriptedScorer::flat(0.5))).unwrap();
         assert_eq!(
             code, EXIT_NO_IMPROVEMENT,
             "a harvest with no delta is normal"
         );
-        assert!(!cli.output_dir.join("population-candidate.json").exists());
+        assert!(!out(&cli).join("population-candidate.json").exists());
     }
 
     #[test]
@@ -1200,7 +1305,7 @@ mod tests {
             .with("bundle", 0.55);
         assert_eq!(run_with(&cli, Some(&scorer)).unwrap(), EXIT_IMPROVED);
 
-        let s = summary(&cli.output_dir);
+        let s = summary(out(&cli));
         let scored: Vec<&str> = s.candidates.iter().map(|c| c.label.as_str()).collect();
         assert_eq!(
             scored,
@@ -1231,8 +1336,8 @@ mod tests {
             .with("single-01", 0.30)
             .with("bundle", 0.30);
         assert_eq!(run_with(&cli, Some(&scorer)).unwrap(), EXIT_NO_IMPROVEMENT);
-        assert!(!cli.output_dir.join("population-candidate.json").exists());
-        assert_eq!(summary(&cli.output_dir).status, "nothingToDo");
+        assert!(!out(&cli).join("population-candidate.json").exists());
+        assert_eq!(summary(out(&cli)).status, "nothingToDo");
     }
 
     #[test]
@@ -1266,5 +1371,80 @@ mod tests {
         assert_eq!(cli.scorer_args, vec!["--gpu=off"]);
         assert_eq!(cli.max_candidates, 8);
         assert!(!cli.dry_run);
+        assert!(cli.command.is_none(), "no subcommand: this is a rebase run");
+    }
+
+    /// Issue #38: the journals a soak wrote have to be readable back.
+    #[test]
+    fn report_reads_the_journals_a_run_wrote() {
+        // Run twice into the same output directory: one improvement, one
+        // rejection. The journal is append-only, so both runs are in one file.
+        let champion = evolved_descendant(2.0, 0.5);
+        let h = harness(&champion);
+        write_bundle(
+            &h.enhancements.join("bundle.json"),
+            vec![forest(&h.corpus_identity, 1, 0.25)],
+        );
+        assert_eq!(
+            run_with(
+                &h.cli,
+                Some(&ScriptedScorer::flat(0.50).with("single-00", 0.60))
+            )
+            .unwrap(),
+            EXIT_IMPROVED
+        );
+        assert_eq!(
+            run_with(
+                &h.cli,
+                Some(&ScriptedScorer::flat(0.80).with("single-00", 0.70))
+            )
+            .unwrap(),
+            EXIT_NO_IMPROVEMENT
+        );
+
+        let journal = out(&h.cli).join("experiments.jsonl");
+        let report = crate::report::read_one(&journal).unwrap();
+        assert_eq!(report.runs, 2);
+        assert_eq!(report.runs_by_status.get("improved"), Some(&1));
+        assert_eq!(report.runs_by_status.get("noImprovement"), Some(&1));
+        assert_eq!(report.runs_with_a_winner, 1);
+        assert_eq!(report.best_vs_champion.len(), 2);
+        assert_eq!(report.enhancements_by_outcome.get("applied"), Some(&2));
+
+        // And through the subcommand itself, which reads and exits 0.
+        let cli = Cli::try_parse_from(["neat_ai_rebase", "report", &journal.display().to_string()])
+            .unwrap();
+        assert_eq!(
+            cli.command,
+            Some(Command::Report {
+                journals: vec![journal]
+            })
+        );
+        assert_eq!(run_with(&cli, None).unwrap(), EXIT_OK);
+    }
+
+    #[test]
+    fn report_names_the_journal_it_cannot_read() {
+        let cli =
+            Cli::try_parse_from(["neat_ai_rebase", "report", "/nonexistent/experiments.jsonl"])
+                .unwrap();
+        let err = run_with(&cli, None).unwrap_err();
+        assert_eq!(err.code, EXIT_FAILURE);
+        assert!(err.message.contains("experiments.jsonl"), "{err}");
+    }
+
+    #[test]
+    fn report_needs_no_champion_and_a_rebase_run_still_does() {
+        // The subcommand negates the run's required flags …
+        assert!(Cli::try_parse_from(["neat_ai_rebase", "report", "a.jsonl"]).is_ok());
+        // … and needs at least one journal.
+        assert!(Cli::try_parse_from(["neat_ai_rebase", "report"]).is_err());
+        // … while a rebase run still demands every one of them.
+        assert!(Cli::try_parse_from(["neat_ai_rebase", "--champion", "c.json"]).is_err());
+        let help = Cli::command().render_long_help().to_string();
+        assert!(
+            help.contains("report"),
+            "the subcommand is discoverable: {help}"
+        );
     }
 }

@@ -114,6 +114,14 @@ struct Harness {
 }
 
 impl Harness {
+    /// Where this run writes its outputs.
+    fn out(&self) -> &std::path::Path {
+        self.cli
+            .output_dir
+            .as_deref()
+            .expect("the harness always sets an output directory")
+    }
+
     /// Stage a run whose `--champion` is `champion`, freshly fetched.
     fn new(champion: &CreatureExport) -> Self {
         let tmp = tempfile::tempdir().unwrap();
@@ -136,14 +144,15 @@ impl Harness {
 
         Self {
             cli: Cli {
-                champion: champion_path,
+                command: None,
+                champion: Some(champion_path),
                 enhancements: Some(bundle_path.clone()),
                 harvest_from: None,
                 screen_sample_rate: None,
                 screen_held_out: true,
-                training_data: training,
+                training_data: Some(training),
                 scorer: None,
-                output_dir,
+                output_dir: Some(output_dir),
                 scorer_args: Vec::new(),
                 min_improvement: 1e-9,
                 max_candidates: 8,
@@ -169,14 +178,12 @@ impl Harness {
     }
 
     fn summary(&self) -> RebaseSummary {
-        serde_json::from_str(
-            &std::fs::read_to_string(self.cli.output_dir.join("rebase.json")).unwrap(),
-        )
-        .unwrap()
+        serde_json::from_str(&std::fs::read_to_string(self.out().join("rebase.json")).unwrap())
+            .unwrap()
     }
 
     fn published(&self) -> Option<CreatureExport> {
-        let path = self.cli.output_dir.join("population-candidate.json");
+        let path = self.out().join("population-candidate.json");
         let text = std::fs::read_to_string(path).ok()?;
         Some(parse_creature_json(&text).unwrap())
     }

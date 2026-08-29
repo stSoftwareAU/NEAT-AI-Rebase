@@ -123,7 +123,7 @@ neat_ai_rebase \
 | --- | --- |
 | `population-candidate.json` | **only** on a verified improvement |
 | `rebase.json` | always — the full summary, verdict included |
-| `experiments.jsonl` | always — append-only journal |
+| `experiments.jsonl` | always — append-only journal, read back by `neat_ai_rebase report <experiments.jsonl>...` |
 
 Neither the champion file nor any enhancement file is ever written to.
 
