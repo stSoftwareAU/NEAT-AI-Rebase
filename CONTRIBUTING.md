@@ -11,7 +11,7 @@ Run the same gate CI runs:
 It needs the sibling `../NEAT-AI-core` checkout, `shellcheck`, and (optionally)
 `cargo-deny`. Everything else is plain `cargo`.
 
-CI adds four gates `quality.sh` cannot run locally:
+CI adds five gates `quality.sh` cannot run locally:
 
 * `.github/workflows/gitleaks.yml` scans the PR's commit range for committed
   secrets and fails the PR if it finds one. Rotate anything it flags —
@@ -33,6 +33,17 @@ CI adds four gates `quality.sh` cannot run locally:
   `npx markdownlint-cli2@0.23.2` reproduces the CI result exactly. Fix the
   finding; disable a rule in that config only when it is genuinely noisy for
   this repository, and say why in the PR description.
+* `.github/workflows/cargo-audit.yml` audits the committed `Cargo.lock`
+  against the RustSec advisory database on every PR **and** at 06:00 UTC every
+  Monday. The schedule is what `cargo deny check` cannot give you: an advisory
+  published against a dependency that is already locked surfaces on the next
+  Monday instead of waiting for someone to open a PR. Reproduce it with
+  `cargo install cargo-audit --version 0.22.2 && cargo audit` — it reads
+  `Cargo.lock` only, so it needs neither a build nor the `../NEAT-AI-core`
+  sibling. Upgrade past the advisory; if it genuinely cannot be fixed, ignore
+  that one ID in `.cargo/audit.toml` (cargo-audit does not read `deny.toml`),
+  add the same ID to `deny.toml` so both gates agree, and say why in the PR
+  description.
 
 ## What a change has to preserve
 
