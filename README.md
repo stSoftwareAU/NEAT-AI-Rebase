@@ -41,9 +41,9 @@ and `--screen-sample-rate` narrows a cohort on a sub-sample before the corpus is
 touched.
 
 Wiring the producers up — NEAT-AI-Forests and NEAT-AI-Ockham calling Rebase at
-population re-entry — is the next step, and is deliberately separate: it
-changes two running optimisers, so it lands behind their own feature switches
-with their own evidence. [`docs/integration.md`](docs/integration.md) is the
+population re-entry — lands in each optimiser's own repository, because it
+changes a running optimiser: it goes behind that optimiser's feature switch
+with its own evidence. [`docs/integration.md`](docs/integration.md) is the
 checklist for it.
 
 Both halves of that wiring are ready on this side. `PruneLog` turns each
@@ -52,8 +52,13 @@ combo, into a v1 enhancement stamped with the opening checksum, score and
 corpus identity; `rebase/tests/ockham_reentry.rs` and
 `rebase/tests/forest_reentry.rs` run the whole path — file the changes, fetch a
 *fresh* champion, replay, score, publish — over the real CLI against a
-scripted scorer. What remains for each producer is the call itself, at its own
-acceptance point and behind its own switch.
+scripted scorer.
+
+**NEAT-AI-Forests calls it** (Issue #65): `forests/src/enhancements.rs` opens a
+`PatchLog` on the creature the run started from and files every patch the full
+scorer accepts, writing `enhancements.json` beside `best.json`. It is behind
+`--enhancements`, off by default, and NEAT-AI-Ockham's own call is still to
+come at its acceptance point and behind its own switch.
 
 ## Quick start
 
