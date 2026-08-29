@@ -1,5 +1,5 @@
 //! The CI gates must actually fire on the PRs they are supposed to gate
-//! (Issues #59, #60, #61, #62).
+//! (Issues #59, #60, #61, #62, #63).
 //!
 //! Milestone sub-issue PRs target a shared `milestone/<slug>` branch rather
 //! than `Develop`, and GitHub's branch filter glob `*` stops at a `/` — so a
@@ -185,6 +185,28 @@ fn markdown_lint_still_gates_unnested_branches() {
         assert!(
             matches_any(&filter, branch),
             "markdown-lint.yml filter {filter:?} stopped gating PRs into {branch}"
+        );
+    }
+}
+
+#[test]
+fn semgrep_gates_milestone_pull_requests() {
+    let filter = workflow_filter("semgrep.yml");
+    for branch in ["milestone/rebase-v1", "milestone/producer-wiring"] {
+        assert!(
+            matches_any(&filter, branch),
+            "semgrep.yml filter {filter:?} does not gate PRs into {branch}"
+        );
+    }
+}
+
+#[test]
+fn semgrep_still_gates_unnested_branches() {
+    let filter = workflow_filter("semgrep.yml");
+    for branch in ["Develop", "main", "issue-63-fix"] {
+        assert!(
+            matches_any(&filter, branch),
+            "semgrep.yml filter {filter:?} stopped gating PRs into {branch}"
         );
     }
 }
