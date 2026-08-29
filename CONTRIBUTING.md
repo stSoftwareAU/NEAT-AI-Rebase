@@ -37,7 +37,10 @@ CI adds five gates `quality.sh` cannot run locally:
   against the RustSec advisory database on every PR **and** at 06:00 UTC every
   Monday. The schedule is what `cargo deny check` cannot give you: an advisory
   published against a dependency that is already locked surfaces on the next
-  Monday instead of waiting for someone to open a PR. Reproduce it with
+  Monday instead of waiting for someone to open a PR. "Every PR" includes the
+  sub-issue PRs that target a shared `milestone/<slug>` branch: the filter
+  lists `milestone/*` alongside `*`, because a workflow glob `*` stops at a
+  `/`. Reproduce it with
   `cargo install cargo-audit --version 0.22.2 && cargo audit` — it reads
   `Cargo.lock` only, so it needs neither a build nor the `../NEAT-AI-core`
   sibling. Upgrade past the advisory; if it genuinely cannot be fixed, ignore
