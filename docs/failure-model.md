@@ -136,6 +136,15 @@ own numbers and identity.
 `experiments.jsonl` carries the same facts as append-only records, so a run
 that died part-way still leaves everything it had decided up to that point.
 
+A screened run additionally leaves one `screen` record per phase — every
+enhancement's sampled score and **signed delta** against that stratum's
+baseline, its verdict, and the number of records the stratum held. The staging
+directory is deleted on the way out, so those numbers are the only account of
+what the screen saw. `kept 0 of 3` on its own cannot be diagnosed: three deltas
+of `-3e-4` is the screen working, three of exactly `0.0` is a stratum with no
+power over these grafts, and the verdicts say which — `worse` for the first,
+`indistinguishable` for the second.
+
 `neat_ai_rebase report <experiments.jsonl>...` reads those journals back over a
 whole soak. It segments the file into runs — a `result` record closes one, an
 `opening` starts one — so a reused output directory reports as the several runs
