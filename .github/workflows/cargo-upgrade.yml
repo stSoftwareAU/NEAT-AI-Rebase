@@ -1,0 +1,156 @@
+# Weekly Cargo dependency refresh for NEAT-AI-Rebase (Issue #18).
+#
+# `cargo upgrade` bumps the version requirements in the manifests, `cargo
+# update` refreshes `Cargo.lock`, and the result is proposed as a pull request
+# against `Develop` instead of being pushed. Nothing merges itself: the bump is
+# judged by a human and by the PR gates (`ci.yml`, `dependency-review.yml`,
+# `cargo-audit.yml`), which is also what keeps a crate published minutes ago
+# from landing unreviewed — cargo-edit has no release-age quarantine of its own.
+#
+# Three things are deliberately different from `cargo-audit.yml`, the closest
+# neighbour:
+#
+#  * The sibling `../NEAT-AI-core` checkout IS required here. `cargo audit`
+#    only parses `Cargo.lock`, but `cargo upgrade` and `cargo update` resolve
+#    the whole workspace, and `neat-core` is a `path` dependency — without the
+#    sibling both abort with "failed to load manifest for dependency
+#    `neat-core`".
+#  * The job verifies the bump before proposing it. When `ACTIONS_PUSH` is
+#    unset the PR is opened with `GITHUB_TOKEN`, and GitHub then suppresses the
+#    downstream workflow runs — so a broken bump would arrive with no CI at all.
+#    Running `cargo deny check` and the test suite here means a bad upgrade
+#    fails this run loudly and no PR is raised.
+#  * `contents: write` and `pull-requests: write` are scoped to the job rather
+#    than the workflow, and the checkout still drops its credentials:
+#    create-pull-request configures its own token for the push.
+name: Cargo Dependency Updates
+
+on:
+  schedule:
+    # 06:00 UTC every Monday — the same slot as `cargo-audit.yml`, so the
+    # week's dependency news arrives in one place.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Not keyed by ref: there is one upgrade branch, and a second run must not
+  # race the first for it. `cancel-in-progress` stays false so a run is never
+  # killed between pushing the branch and opening the pull request.
+  group: cargo-upgrade
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  upgrade:
+    name: Cargo Dependency Updates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      # `ref` is explicit: a manual dispatch from a topic branch must still
+      # propose the bump against the integration branch, not against whatever
+      # ref happened to launch it. create-pull-request supplies its own
+      # credential for the push, so the checkout keeps none.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: Develop
+          persist-credentials: false
+
+      - name: Set up NEAT-AI-core sibling (path dependency for neat-core)
+        uses: ./.github/actions/setup-neat-core
+
+      # Same pin and same version as `ci.yml` and `cargo-audit.yml`;
+      # `rust-toolchain.toml` pins the channel for anything run inside the
+      # checkout anyway.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable, frozen 2026-05-18
+        with:
+          toolchain: "1.98.0"
+
+      # Exact version, the way `ci.yml` installs cargo-deny: an unpinned
+      # cargo-edit could change what this job rewrites without a diff. There is
+      # no cargo-edit manifest in install-action at this pin, so it installs
+      # 0.13.13 through its cargo-binstall fallback — pinned either way.
+      - name: Install cargo-edit
+        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2.81.10
+        with:
+          tool: cargo-edit@0.13.13
+
+      # `--incompatible=ignore` keeps this to semver-compatible bumps. A major
+      # bump is a code change, not a version-number change, so it stays a
+      # deliberate PR — the run reports it as `incompatible: <crate>` in the
+      # log. `--pinned=ignore` leaves any `=x.y.z` requirement alone.
+      # `neat-core` is a `path` dependency with no version requirement, so
+      # cargo-edit reports it as `local` and never rewrites it.
+      - name: Upgrade compatible requirements and refresh the lockfile
+        run: |
+          set -euo pipefail
+          cargo upgrade --incompatible=ignore --pinned=ignore
+          cargo update
+
+      - name: Check for dependency changes
+        id: changes
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Cargo.toml rebase/Cargo.toml Cargo.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Dependencies already at their latest compatible versions — nothing to propose."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat -- Cargo.toml rebase/Cargo.toml Cargo.lock
+          fi
+
+      - name: Install cargo-deny (prebuilt binary)
+        if: steps.changes.outputs.changed == 'true'
+        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2.81.10
+        with:
+          tool: cargo-deny
+
+      # The bump is verified here, not only on the PR: licences, bans and
+      # RustSec advisories over the refreshed lockfile, then the suite built
+      # with the same `-D warnings` the local gate uses. A failure fails this
+      # run and stops the PR — a broken upgrade is never proposed.
+      - name: Verify the upgrade
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: |
+          set -euo pipefail
+          cargo deny check
+          cargo test --workspace --all-features
+
+      - name: Create pull request
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          # Org-level PAT so the created PR fires its downstream workflows; a
+          # bare GITHUB_TOKEN makes GitHub suppress those triggers. Falls back
+          # to GITHUB_TOKEN when the secret is unset, in which case the
+          # verification step above is the only gate the bump has seen.
+          token: ${{ secrets.ACTIONS_PUSH || secrets.GITHUB_TOKEN }}
+          branch: chore/cargo-upgrade
+          base: Develop
+          delete-branch: true
+          commit-message: "chore: update Cargo dependencies"
+          title: "chore: update Cargo dependencies"
+          committer: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          body: |
+            Automated weekly Cargo dependency update (Issue #18).
+
+            `cargo upgrade --incompatible=ignore --pinned=ignore` followed by
+            `cargo update`, verified in the scheduled run with `cargo deny check`
+            and `cargo test --workspace --all-features` before this pull request
+            was opened. Semver-incompatible bumps are deliberately excluded —
+            see the workflow log for any crate reported as `incompatible`.
+
+            Review it like any other dependency change: the PR gates decide.

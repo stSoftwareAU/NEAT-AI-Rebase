@@ -82,3 +82,17 @@ descendant, which is the bug.
 
 New third-party dependencies need a reason in the PR description and must pass
 `cargo deny check`.
+
+Third-party crates are refreshed for you: `.github/workflows/cargo-upgrade.yml`
+runs `cargo upgrade --incompatible=ignore --pinned=ignore` plus `cargo update`
+at 06:00 UTC every Monday and opens `chore/cargo-upgrade` against `Develop`
+with the result. Reproduce it with
+`cargo install cargo-edit --version 0.13.13 --locked` and the same two
+commands — it resolves the workspace, so the sibling `../NEAT-AI-core` checkout
+must be present. Two things it deliberately does not do: it never bumps a
+semver-incompatible requirement (a major bump is a code change, so it stays a
+hand-written PR — the run logs the crate as `incompatible`), and it never
+rewrites the `neat-core` path dependency, which cargo-edit reports as `local`.
+The scheduled run verifies its own bump with `cargo deny check` and the test
+suite before raising the PR, so a broken upgrade fails the run instead of
+arriving as a pull request.
