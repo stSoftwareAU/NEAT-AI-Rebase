@@ -1,5 +1,5 @@
 //! The CI gates must actually fire on the PRs they are supposed to gate
-//! (Issue #59).
+//! (Issues #59, #60, #62).
 //!
 //! Milestone sub-issue PRs target a shared `milestone/<slug>` branch rather
 //! than `Develop`, and GitHub's branch filter glob `*` stops at a `/` — so a
@@ -123,6 +123,26 @@ fn cargo_audit_still_gates_unnested_branches() {
             "cargo-audit.yml filter {filter:?} stopped gating PRs into {branch}"
         );
     }
+}
+
+#[test]
+fn ci_gates_milestone_pull_requests() {
+    let filter = workflow_filter("ci.yml");
+    for branch in ["milestone/rebase-v1", "milestone/producer-wiring"] {
+        assert!(
+            matches_any(&filter, branch),
+            "ci.yml filter {filter:?} does not gate PRs into {branch}"
+        );
+    }
+}
+
+#[test]
+fn ci_still_gates_develop() {
+    let filter = workflow_filter("ci.yml");
+    assert!(
+        matches_any(&filter, "Develop"),
+        "ci.yml filter {filter:?} stopped gating PRs into Develop"
+    );
 }
 
 #[test]

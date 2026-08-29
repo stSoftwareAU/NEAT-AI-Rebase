@@ -10,8 +10,14 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    # `milestone/*` is listed explicitly because a workflow branch glob `*`
+    # stops at a `/`: without it, the sub-issue PRs that target a shared
+    # `milestone/<slug>` branch merge with no quality gate at all, and the gap
+    # only surfaces when the rollup PR reaches `Develop` (Issue #60).
+    # `rebase/tests/workflow_branch_filters.rs` holds this.
     branches:
       - Develop
+      - milestone/*
   push:
     branches:
       - Develop

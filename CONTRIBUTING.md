@@ -11,6 +11,11 @@ Run the same gate CI runs:
 It needs the sibling `../NEAT-AI-core` checkout, `shellcheck`, and (optionally)
 `cargo-deny`. Everything else is plain `cargo`.
 
+`.github/workflows/ci.yml` runs that same gate on every PR into `Develop` and
+on the sub-issue PRs that target a shared `milestone/<slug>` branch: the filter
+lists `milestone/*` alongside `Develop`, because a workflow glob `*` stops at a
+`/`.
+
 CI adds five gates `quality.sh` cannot run locally:
 
 * `.github/workflows/gitleaks.yml` scans the PR's commit range for committed
