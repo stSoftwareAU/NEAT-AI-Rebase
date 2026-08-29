@@ -14,7 +14,10 @@ and (optionally) `cargo-deny`. Everything else is plain `cargo`.
 `.github/workflows/ci.yml` runs that same gate on every PR into `Develop` and
 on the sub-issue PRs that target a shared `milestone/<slug>` branch: the filter
 lists `milestone/*` alongside `Develop`, because a workflow glob `*` stops at a
-`/`.
+`/`. It has no `push:` trigger: as a required status check it already gates
+every merge on the PR, so re-running it on the push to `Develop` would only
+duplicate that run (Issue #57). Re-run it by hand with `workflow_dispatch` when
+you need a fresh result on the default branch.
 
 `.github/workflows/actionlint.yml` lints the workflow YAML itself with
 [`actionlint`](https://github.com/rhysd/actionlint) — syntax, undefined
