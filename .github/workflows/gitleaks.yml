@@ -14,7 +14,12 @@ name: Gitleaks
 
 on:
   pull_request:
-    branches: ["*"]
+    # `*` stops at a `/`, so it matches `Develop` but never
+    # `milestone/<slug>` — the shared branch milestone sub-issue PRs target.
+    # `milestone/*` is listed explicitly so those PRs are scanned for secrets
+    # as they merge, rather than only when the rollup PR reaches the default
+    # branch (Issue #61). `rebase/tests/workflow_branch_filters.rs` holds this.
+    branches: ["*", "milestone/*"]
 
 permissions:
   contents: read

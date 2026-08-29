@@ -19,8 +19,11 @@ lists `milestone/*` alongside `Develop`, because a workflow glob `*` stops at a
 CI adds five gates `quality.sh` cannot run locally:
 
 * `.github/workflows/gitleaks.yml` scans the PR's commit range for committed
-  secrets and fails the PR if it finds one. Rotate anything it flags —
-  rewriting the branch alone does not un-leak a credential.
+  secrets and fails the PR if it finds one. Every PR is scanned, including the
+  sub-issue PRs that target a shared `milestone/<slug>` branch: the filter
+  lists `milestone/*` alongside `*`, because a workflow glob `*` stops at a
+  `/`. Rotate anything it flags — rewriting the branch alone does not un-leak
+  a credential.
 * `.github/workflows/semgrep.yml` runs the Semgrep `p/default` static-analysis
   ruleset over the PR and fails on any blocking finding. Fix the finding; if it
   is a genuine false positive, silence that one line with a
