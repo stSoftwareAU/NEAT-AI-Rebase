@@ -252,6 +252,51 @@ scored, not trusted.
 Search heuristics, previous wins and provenance are evidence. Only an
 authoritative score determines population re-entry.
 
+## Where this sits in the literature
+
+Rebase has no direct equivalent we can find in neuroevolution, but the pattern
+it implements is orthodox in three other fields. The mechanism is novel *as an
+artefact*, not *as an idea*: machine learning has been reconciling stale updates
+against a moved base since at least 2011, and concurrency control has been
+validating finished work against the version it actually landed on since 1981.
+That framing is the stronger one — the design has thirty years of
+concurrency-control thinking behind it rather than one repository's.
+
+**Stale-update reconciliation** — the closest prior art. Asynchronous SGD
+computes an update against parameters `w_t` and applies it to `w_{t+k}`.
+Hogwild! (Recht et al. 2011) argues the staleness is tolerable; DistBelief (Dean
+et al. 2012) measures the damage; and DC-ASGD (Zheng et al. 2017, *Asynchronous
+Stochastic Gradient Descent with Delay Compensation*, ICML) explicitly corrects
+a delayed update for the base having moved. That is Rebase's problem statement
+with structure in place of weights: Δ was derived against **A** and is being
+applied to **B**.
+
+**Patch transplantation** — lifting a change out of one artefact and re-grafting
+it into a different, independently moved one: Barr et al. 2015, *Automated
+Software Transplantation* (ISSTA); Petke et al. 2018, *Genetic Improvement of
+Software: A Comprehensive Survey* (IEEE TEVC). The enhancement contract is the
+patch, `--harvest-from` is the donor, and the freshly fetched champion is the
+host.
+
+**Optimistic concurrency control** — Kung & Robinson 1981, *On optimistic
+methods for concurrency control* (ACM TODS): read a version, work, then validate
+at commit time against the version you actually landed on. `judge` is that
+validation phase, and `rebase/tests/race_conditions.rs` exercises the anomalies
+OCC is defined against. The git-rebase framing this project is named for is the
+same idea arriving from a third field; both are worth naming.
+
+**Asynchronous and steady-state evolutionary algorithms** — the EA-side
+analogue. Workers publish into a population that keeps moving while they work,
+rather than into a synchronised generation boundary.
+
+**Sampled screening before authoritative scoring** — racing: Maron & Moore 1994
+(Hoeffding races); Birattari et al. 2002 (F-Race); Jamieson & Talwalkar 2016
+(successive halving); Li et al. 2017 (Hyperband). Each of those eliminates an
+arm only once it is *statistically* behind, never on a bare point comparison,
+which is what `--screen-sample-rate` does today; see
+[#42](https://github.com/stSoftwareAU/NEAT-AI-Rebase/issues/42) for the power
+problem that raises in practice.
+
 ## Documentation
 
 | Document | What it covers |

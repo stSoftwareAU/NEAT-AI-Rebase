@@ -64,6 +64,19 @@ neat_ai_rebase \
 
 Or call the library directly — `rebase()` then `judge()`.
 
+On a bundle large enough that the cohort will not fit the authoritative budget,
+`--screen-sample-rate` narrows it on a sub-sample before the corpus is touched.
+Read [§4b of the protocol](rebase-protocol.md#4b-screening-and-the-trap-in-it)
+first: selecting on a stratum and then judging that selection on the same
+stratum is a trap. The screen is a racing method — Maron & Moore 1994 (Hoeffding
+races), Birattari et al. 2002 (F-Race), Jamieson & Talwalkar 2016 (successive
+halving), Li et al. 2017 (Hyperband) — placed alongside the rest of the prior
+art under [Where this sits in the
+literature](../README.md#where-this-sits-in-the-literature). Those methods drop
+an arm only once it is *statistically* behind; Rebase's screen still drops one
+on a bare point comparison, which is
+[#42](https://github.com/stSoftwareAU/NEAT-AI-Rebase/issues/42).
+
 ### 5. Publish only what Rebase emits
 
 Push `population-candidate.json`, and only that file, and only when it exists.
