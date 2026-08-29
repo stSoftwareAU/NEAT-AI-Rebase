@@ -8,13 +8,25 @@ Run the same gate CI runs:
 ./quality.sh
 ```
 
-It needs the sibling `../NEAT-AI-core` checkout, `shellcheck`, and (optionally)
-`cargo-deny`. Everything else is plain `cargo`.
+It needs the sibling `../NEAT-AI-core` checkout, `shellcheck`, `actionlint`,
+and (optionally) `cargo-deny`. Everything else is plain `cargo`.
 
 `.github/workflows/ci.yml` runs that same gate on every PR into `Develop` and
 on the sub-issue PRs that target a shared `milestone/<slug>` branch: the filter
 lists `milestone/*` alongside `Develop`, because a workflow glob `*` stops at a
 `/`.
+
+`.github/workflows/actionlint.yml` lints the workflow YAML itself with
+[`actionlint`](https://github.com/rhysd/actionlint) — syntax, undefined
+`${{ }}` context properties, bad `runs-on` labels, and shell bugs inside `run:`
+blocks. It runs `./scripts/actionlint.sh`, the same script `quality.sh` calls,
+so a workflow regression fails locally before it reaches CI. Every PR is
+linted, including the sub-issue PRs that target a shared `milestone/<slug>`
+branch: the filter lists `milestone/*` alongside `*`, because a workflow glob
+`*` stops at a `/`. Install the linter with
+`go install github.com/rhysd/actionlint/cmd/actionlint@latest` or the
+[documented download](https://github.com/rhysd/actionlint/blob/main/docs/install.md);
+a missing `actionlint` fails the gate rather than skipping it.
 
 CI adds five gates `quality.sh` cannot run locally:
 
