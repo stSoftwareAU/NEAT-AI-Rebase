@@ -1,5 +1,5 @@
 //! The CI gates must actually fire on the PRs they are supposed to gate
-//! (Issues #59, #60, #62).
+//! (Issues #59, #60, #61, #62).
 //!
 //! Milestone sub-issue PRs target a shared `milestone/<slug>` branch rather
 //! than `Develop`, and GitHub's branch filter glob `*` stops at a `/` — so a
@@ -143,6 +143,28 @@ fn ci_still_gates_develop() {
         matches_any(&filter, "Develop"),
         "ci.yml filter {filter:?} stopped gating PRs into Develop"
     );
+}
+
+#[test]
+fn gitleaks_gates_milestone_pull_requests() {
+    let filter = workflow_filter("gitleaks.yml");
+    for branch in ["milestone/rebase-v1", "milestone/producer-wiring"] {
+        assert!(
+            matches_any(&filter, branch),
+            "gitleaks.yml filter {filter:?} does not gate PRs into {branch}"
+        );
+    }
+}
+
+#[test]
+fn gitleaks_still_gates_unnested_branches() {
+    let filter = workflow_filter("gitleaks.yml");
+    for branch in ["Develop", "main", "issue-61-fix"] {
+        assert!(
+            matches_any(&filter, branch),
+            "gitleaks.yml filter {filter:?} stopped gating PRs into {branch}"
+        );
+    }
 }
 
 #[test]
