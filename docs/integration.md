@@ -40,9 +40,10 @@ journal.
 Do this at the moment of acceptance, in acceptance order. A run that files only
 its final creature has thrown away everything Rebase needs.
 
-An Ockham run does not have to hand-build the envelope: `PruneLog` holds the
-opening facts from step 1 and stamps them on every prune, so a bundle cannot
-end up naming a creature nobody else has. See the worked example below.
+Neither producer has to hand-build the envelope: `PatchLog` (Forests) and
+`PruneLog` (Ockham) hold the opening facts from step 1 and stamp them on every
+accepted change, so a bundle cannot end up naming a creature nobody else has.
+See the worked examples below.
 
 ### 3. Refresh the champion at re-entry time
 
@@ -86,13 +87,57 @@ explained after the fact.
 
 A Forests run opens on `A`, accepts two patches, and finishes 50 minutes later.
 
-1. On open: checksum `A`, score it, record the corpus identity.
-2. On each accepted patch: file
+```mermaid
+sequenceDiagram
+    autonumber
+    participant F as Forests run
+    participant L as PatchLog
+    participant P as Population
+    participant R as Rebase
+    participant S as Scorer
+    F->>P: fetch champion → A
+    F->>L: opening(producer, A, baseScore, corpusIdentity)
+    Note over P: the fleet evolves A → B independently
+    F->>L: accept(patch, improvedScore) — at each authoritative acceptance
+    F->>L: accept_combo(combo, improvedScore) — a verified boosting round
+    F->>L: write_bundle(enhancements.json) — beside best.json
+    F->>P: fetch champion again → B
+    F->>R: --champion B --enhancements enhancements.json
+    R->>R: already grafted? → alreadyPresent, else graft onto a clone of B
+    R->>S: score B and every rebased candidate
+    S-->>R: verdict
+    R-->>F: population-candidate.json, only when B + Δ beat B
+```
+
+1. On open: same four facts, held in one `PatchLog`.
+
+   ```rust
+   let mut log = PatchLog::opening("neat-ai-forests/0.1.18", &opening, base_score, &corpus_identity)?;
+   ```
+
+2. On each accepted patch: file the patch **as accepted**, in acceptance order.
+
+   ```rust
+   log.accept(&accepted_patch, improved_score)?;
+   ```
+
+   Which produces
    `{"meta": {…}, "payload": {"kind": "forestPatch", "patch": <the exact accepted patch>}}`.
-   The patch is the one Forests already writes to `experiments.jsonl` — reuse
-   those bytes rather than rebuilding them, so `Patch::id()` matches.
-3. At the end: fetch the champion again. It is now `B`, which grew a hidden
-   neuron the run never saw.
+   The patch is the one Forests already writes to `experiments.jsonl` — pass
+   those bytes rather than rebuilding them, so `Patch::id()` matches the id the
+   graft named its structure with. A boosting round that was verified as a
+   combo is filed with `accept_combo`, which appends the members the run has
+   not already filed, in the order the combo applies them, so the bundle's
+   prefix of that length reproduces the creature the combo's score was measured
+   on. Filing fails closed on a non-finite score, an unsupported patch version,
+   a non-finite weight, threshold or leaf, a bare-leaf root, an output or
+   feature index `A` does not have, a condition naming one feature twice, and
+   the same patch filed twice.
+3. At the end: `log.write_bundle(path)?` — it returns `false` and writes
+   nothing when the run accepted no patch, which is the signal not to invoke
+   Rebase at all. Then fetch the champion **again**. It is now `B`, which grew
+   a hidden neuron the run never saw; the run's own descendant is `A + Δ` and
+   is not the fleet's champion.
 4. Invoke Rebase. It grafts both patches onto clones of `B` — `B`'s new neuron
    untouched — and builds `bundle`, `single-00`, `single-01`.
 5. The scorer prefers `bundle`. `population-candidate.json` is `B + Δ₁ + Δ₂`.

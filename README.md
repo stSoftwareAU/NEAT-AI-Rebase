@@ -46,11 +46,14 @@ changes two running optimisers, so it lands behind their own feature switches
 with their own evidence. [`docs/integration.md`](docs/integration.md) is the
 checklist for it.
 
-The Ockham half of that wiring is ready on this side: `PruneLog` turns each
-accepted prune into a v1 enhancement stamped with the opening checksum, score
-and corpus identity, and `rebase/tests/ockham_reentry.rs` runs the whole path —
-file the prunes, fetch a *fresh* champion, replay, score, publish — over the
-real CLI against a scripted scorer.
+Both halves of that wiring are ready on this side. `PruneLog` turns each
+accepted Ockham prune, and `PatchLog` each accepted Forest patch or verified
+combo, into a v1 enhancement stamped with the opening checksum, score and
+corpus identity; `rebase/tests/ockham_reentry.rs` and
+`rebase/tests/forest_reentry.rs` run the whole path — file the changes, fetch a
+*fresh* champion, replay, score, publish — over the real CLI against a
+scripted scorer. What remains for each producer is the call itself, at its own
+acceptance point and behind its own switch.
 
 ## Quick start
 

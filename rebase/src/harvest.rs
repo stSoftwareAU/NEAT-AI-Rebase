@@ -1,10 +1,11 @@
 //! Recover an enhancement bundle from a creature that already carries the work
-//! (NEAT-AI-Rebase #7, producer side not yet wired).
+//! (NEAT-AI-Rebase #7, for creatures published without a filed bundle).
 //!
 //! The intended flow is that a producer files its accepted changes as it makes
-//! them ([`crate::enhancement`]). Forests does not do that yet — and the fleet
-//! is already running, publishing creatures every few minutes, losing exactly
-//! the discoveries this project exists to keep.
+//! them — [`crate::patch_log`] is that path for Forests. Until a run is calling
+//! it, and for every creature already published without one, the fleet is still
+//! publishing creatures every few minutes, losing exactly the discoveries this
+//! project exists to keep.
 //!
 //! It does not have to be lost, because a Forest graft is **self-identifying**:
 //! every neuron it appends is named `forest-<patch id>-…`, and the patch id is
@@ -27,9 +28,12 @@
 //! patches that survived into the published creature — a patch Forests accepted
 //! and later dropped, or one whose structure a pruner has since rewritten, is
 //! gone. It also cannot recover the producer's own scores, so the meta carries
-//! the harvest's own provenance rather than an invented measurement.
+//! the harvest's own provenance rather than an invented measurement. And its
+//! order is by patch id, which is stable but arbitrary, where a filed bundle
+//! records acceptance order.
 //!
-//! Use it to rebase what the fleet is publishing today; keep #7 open.
+//! Use it for creatures published without a bundle beside them; a run that
+//! filed one through [`crate::patch_log`] passes `--enhancements` instead.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
