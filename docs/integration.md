@@ -171,6 +171,13 @@ sequenceDiagram
    untouched — and builds `bundle`, `single-00`, `single-01`.
 5. The scorer prefers `bundle`. `population-candidate.json` is `B + Δ₁ + Δ₂`.
    `B`'s independent improvement survives, and so do both discoveries.
+6. Forests makes these calls from `forests/src/enhancements.rs`, behind
+   `--enhancements` and off by default (step 6 above, Issue #65). Its
+   `run::tests::with_enhancements_off_nothing_is_written_and_the_run_is_unchanged`
+   runs the loop with the switch on and off and asserts the same candidates,
+   the same acceptances and the same final creature — the evidence that filing
+   records the acceptance decision without participating in it. Evidence on the
+   workload is what retires the direct re-entry path.
 
 If `B` had already contained one of the patches — another host got there first
 — that one is reported `alreadyPresent` and no duplicate structure is built.
