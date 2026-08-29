@@ -78,8 +78,9 @@ fn unquote(entry: &str) -> String {
     entry.trim().trim_matches(['"', '\'']).to_string()
 }
 
-fn cargo_audit_filter() -> Vec<String> {
-    let path = repo_root().join(".github/workflows/cargo-audit.yml");
+/// The committed `pull_request` branch filter of `.github/workflows/<file>`.
+fn workflow_filter(file: &str) -> Vec<String> {
+    let path = repo_root().join(".github/workflows").join(file);
     let workflow = std::fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
     pull_request_branches(&workflow)
@@ -104,7 +105,7 @@ fn single_star_does_not_cross_a_slash() {
 
 #[test]
 fn cargo_audit_gates_milestone_pull_requests() {
-    let filter = cargo_audit_filter();
+    let filter = workflow_filter("cargo-audit.yml");
     for branch in ["milestone/rebase-v1", "milestone/producer-wiring"] {
         assert!(
             matches_any(&filter, branch),
@@ -115,11 +116,33 @@ fn cargo_audit_gates_milestone_pull_requests() {
 
 #[test]
 fn cargo_audit_still_gates_unnested_branches() {
-    let filter = cargo_audit_filter();
+    let filter = workflow_filter("cargo-audit.yml");
     for branch in ["Develop", "main", "issue-59-fix"] {
         assert!(
             matches_any(&filter, branch),
             "cargo-audit.yml filter {filter:?} stopped gating PRs into {branch}"
+        );
+    }
+}
+
+#[test]
+fn markdown_lint_gates_milestone_pull_requests() {
+    let filter = workflow_filter("markdown-lint.yml");
+    for branch in ["milestone/rebase-v1", "milestone/producer-wiring"] {
+        assert!(
+            matches_any(&filter, branch),
+            "markdown-lint.yml filter {filter:?} does not gate PRs into {branch}"
+        );
+    }
+}
+
+#[test]
+fn markdown_lint_still_gates_unnested_branches() {
+    let filter = workflow_filter("markdown-lint.yml");
+    for branch in ["Develop", "main", "issue-62-fix"] {
+        assert!(
+            matches_any(&filter, branch),
+            "markdown-lint.yml filter {filter:?} stopped gating PRs into {branch}"
         );
     }
 }
