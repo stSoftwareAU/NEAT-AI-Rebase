@@ -1,4 +1,5 @@
-//! A checker workflow gates the pull request, not the merge commit (Issue #57).
+//! A checker workflow gates the pull request, not the merge commit (Issues #57,
+//! #58).
 //!
 //! `.github/workflows/ci.yml` is a test/lint gate. Once it is a required status
 //! check, a `push:` trigger on the default branch re-runs the whole gate on
@@ -113,6 +114,28 @@ fn ci_still_gates_pull_requests_and_stays_dispatchable() {
         assert!(
             triggers.iter().any(|trigger| trigger == expected),
             "ci.yml triggers {triggers:?} lost `{expected}`"
+        );
+    }
+}
+
+#[test]
+fn markdown_lint_does_not_rerun_on_push_to_the_default_branch() {
+    let triggers = workflow_triggers("markdown-lint.yml");
+    assert!(
+        !triggers.iter().any(|trigger| trigger == "push"),
+        "markdown-lint.yml triggers {triggers:?} still include `push` — the \
+         gate would re-run on every merge into the default branch, duplicating \
+         the PR run"
+    );
+}
+
+#[test]
+fn markdown_lint_still_gates_pull_requests_and_stays_dispatchable() {
+    let triggers = workflow_triggers("markdown-lint.yml");
+    for expected in ["pull_request", "workflow_dispatch"] {
+        assert!(
+            triggers.iter().any(|trigger| trigger == expected),
+            "markdown-lint.yml triggers {triggers:?} lost `{expected}`"
         );
     }
 }
