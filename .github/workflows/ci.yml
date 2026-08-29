@@ -4,7 +4,7 @@
 # runs the three checks the issue asks for — `cargo fmt --check`,
 # `cargo clippy --all-targets --all-features -- -D warnings` and
 # `cargo test --all` — plus the licence/advisory audit and a doc build, on
-# every PR and every push to Develop.
+# every PR into `Develop` or a `milestone/<slug>` branch.
 name: CI
 
 on:
@@ -18,9 +18,11 @@ on:
     branches:
       - Develop
       - milestone/*
-  push:
-    branches:
-      - Develop
+  # No `push:` trigger: this is a checker, not a deploy. As a required status
+  # check it already gates every merge on the PR, so re-running it on the push
+  # to `Develop` only duplicates that run — wasted CI minutes, and a red tick
+  # on the default branch for a check that already passed (Issue #57).
+  # `rebase/tests/workflow_push_triggers.rs` holds this.
   workflow_dispatch:
 
 permissions:
