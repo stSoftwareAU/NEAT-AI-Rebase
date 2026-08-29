@@ -99,6 +99,37 @@ Step 3 is what makes a verdict safe — it always was, and a candidate selected
 from noise simply loses there. Steps 1 and 2 are what stop the expensive pass
 being spent on noise in the first place.
 
+Two further edges, both found on a live run (Issue #42):
+
+**A screen that cannot save a pass must not run.** Steps 1 and 2 cost a scorer
+invocation of their own and can only ever discard information. When the cohort
+already fits the authoritative budget (`--max-candidates`) every member is
+scored either way, so screening buys nothing and can only lose patches. Rebase
+engages the screen on the *budget*, not on the enhancement count: below the cap
+the cohort goes straight to step 3.
+
+**Elimination is one-sided.** A graft is an `IF` subtree that fires on a subset
+of records. If none of its firing records land in the stratum, its sampled
+score equals the baseline exactly — the stratum failed to resolve it, which is
+not the same as it failing. Racing methods drop an arm only once it is behind,
+so step 1 drops only what the stratum can *see* losing, by more than
+`--min-improvement`; a tie, a sub-resolution difference, or a missing sampled
+score is **undecided** and goes to step 3. Otherwise a patch already accepted on
+the full corpus against base `A` gets vetoed on base `B` by a far weaker test
+than the one that admitted it.
+
+```mermaid
+flowchart TD
+    A[Cohort built] --> B{Fits --max-candidates?}
+    B -- yes --> F[Full corpus decides]
+    B -- no --> C{--screen-sample-rate set?}
+    C -- no --> F
+    C -- yes --> D[Screen phase 0, then held-out phase 1]
+    D --> E{Measurably worse<br/>than the baseline?}
+    E -- yes --> G[Dropped: the stratum saw it lose]
+    E -- "no / tie / no score" --> F
+```
+
 ### 5. Scorer verdict
 
 The champion and the whole cohort are scored in **one** authoritative

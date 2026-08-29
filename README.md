@@ -124,7 +124,7 @@ neat_ai_rebase --champion <FILE> \
 | `--scorer-arg` | — | extra argument passed verbatim to the scorer, repeatable (e.g. `--scorer-arg=--gpu=off`) |
 | `--min-improvement` | `1e-9` | score a candidate must beat the champion by |
 | `--max-candidates` | `8` | cap on constructed candidates, excluding the baseline; `0` = uncapped |
-| `--screen-sample-rate` | off | screen each enhancement on a sub-sample first and carry forward only what beats the champion alone |
+| `--screen-sample-rate` | off | screen each enhancement on a sub-sample first and drop what the stratum can see losing to the champion; engaged only when the cohort does not fit `--max-candidates` |
 | `--screen-held-out` | `true` | re-screen survivors on a second stratum and keep the intersection; takes an explicit `true`/`false` |
 | `--dry-run` | off | build and validate candidates without scoring or emitting |
 
@@ -191,9 +191,38 @@ and eleven made it worse, and every cumulative prefix was worse than the best
 single it contained.
 
 `--screen-sample-rate 0.05` scores each enhancement alone on a sub-sample and
-carries forward only the winners; `--screen-held-out` then confirms them on a
-different stratum of the same size and keeps the intersection. On production
-creatures that narrows 11 patches to 3 before the corpus is touched.
+drops the ones the stratum can see losing to the champion; `--screen-held-out`
+then repeats that on a different stratum of the same size and keeps the
+intersection. On production creatures that narrows 11 patches to 3 before the
+corpus is touched.
+
+Two boundaries keep it from costing more than it buys (Issue #42):
+
+- **It engages only when it can save a corpus pass.** A cohort that already
+  fits `--max-candidates` is scored in full either way, so the screen would
+  spend an extra scorer invocation only to discard information. Below the cap
+  the cohort goes straight to the authoritative pass, which is the better test
+  and was already paid for.
+- **Elimination is one-sided.** Only a candidate whose sampled score is *below*
+  the baseline by more than `--min-improvement` is dropped. A graft fires on a
+  subset of records; when none of them land in the stratum its sampled score is
+  the baseline exactly, and that is the stratum failing to resolve the
+  candidate, not the candidate failing. Ties, sub-resolution differences, and
+  candidates the screen returned no score for are **undecided**, and undecided
+  is carried to the corpus.
+
+**The effect size it is powered for.** A stratum of rate `r` over `N` records
+resolves a difference `d` only while `rN ≳ (σ/d)²` — the standard error of a
+mean-based score falls as `1/√(rN)`, so a tenfold smaller effect needs a
+hundredfold more records. At `r = 0.05` the screen is powered for **gross
+losses, of order 1e-2 to 1e-3** on the sampled score: the eleven patches that
+made the champion worse are exactly that shape. It is **not** powered for the
+effects a good patch has — a live fleet's two accepted patches gained
+**7.1e-05** together, and its discard margin the same night was **5.7e-05**,
+one to two orders of magnitude below what a 5% stratum can see. That gap is why
+elimination is one-sided and why the full corpus is the only thing that
+promotes. Pick the rate from the effect you need it to see, not from a round
+number.
 
 The screen only ever *narrows* what is scored authoritatively. It cannot
 promote anything — a sampled mode is refused as a verdict — and selecting on
@@ -292,10 +321,12 @@ rather than into a synchronised generation boundary.
 **Sampled screening before authoritative scoring** — racing: Maron & Moore 1994
 (Hoeffding races); Birattari et al. 2002 (F-Race); Jamieson & Talwalkar 2016
 (successive halving); Li et al. 2017 (Hyperband). Each of those eliminates an
-arm only once it is *statistically* behind, never on a bare point comparison,
-which is what `--screen-sample-rate` does today; see
-[#42](https://github.com/stSoftwareAU/NEAT-AI-Rebase/issues/42) for the power
-problem that raises in practice.
+arm only once it is *behind*, never on a bare point comparison — and since
+[#42](https://github.com/stSoftwareAU/NEAT-AI-Rebase/issues/42) so does
+`--screen-sample-rate`: a candidate the stratum cannot resolve is undecided and
+goes to the corpus. What Rebase does not yet take from those methods is the
+confidence bound itself; elimination is thresholded on `--min-improvement`
+rather than on a variance estimate.
 
 ## Documentation
 

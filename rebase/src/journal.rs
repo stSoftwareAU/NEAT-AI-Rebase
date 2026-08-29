@@ -24,6 +24,14 @@ use crate::scorer::Verdict;
 /// that a run screened without matching a string the writer is free to change.
 pub const SCREEN_PHASE_LABEL_PREFIX: &str = "screen-phase-";
 
+/// Label of the [`Record::Dropped`] record written when the screen was asked
+/// for but could not pay for itself (Issue #42).
+///
+/// Deliberately not prefixed with [`SCREEN_PHASE_LABEL_PREFIX`]: a run that
+/// skipped the screen did not screen, and `neat_ai_rebase report` must not
+/// count it among the runs whose screen agreed or disagreed with the corpus.
+pub const SCREEN_SKIPPED_LABEL: &str = "screen-skipped";
+
 /// One line of the journal.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
