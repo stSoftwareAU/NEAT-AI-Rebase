@@ -18,6 +18,11 @@
 //! whole point: a graft fires on a subset of records, so a 5% stratum that
 //! contains none of them reports the baseline exactly while the full corpus
 //! sees the gain.
+//!
+//! That difference is also why a phase has to journal what it *measured*
+//! (Issue #43): the two shapes above are the same survivor count and opposite
+//! diagnoses, and the staging directory is deleted on the way out. The last two
+//! tests here pin the numbers a phase leaves behind.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -26,7 +31,7 @@ use neat_ai_rebase::cli::{Cli, EXIT_IMPROVED, RebaseSummary, run_with};
 use neat_ai_rebase::corpus::corpus_info;
 use neat_ai_rebase::enhancement::{Enhancement, EnhancementBundle, Payload, ProducerContext};
 use neat_ai_rebase::fixtures::evolved_descendant;
-use neat_ai_rebase::journal::SCREEN_PHASE_LABEL_PREFIX;
+use neat_ai_rebase::journal::SCREEN_RECORD;
 use neat_ai_rebase::patch::{Node, Patch, Provenance};
 use neat_ai_rebase::report::read_one;
 use neat_ai_rebase::scorer::{
@@ -179,6 +184,15 @@ impl Harness {
             .collect()
     }
 
+    /// The screen records the run journalled, one per phase, in order.
+    fn screen_records(&self) -> Vec<serde_json::Value> {
+        self.journal_lines()
+            .iter()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .filter(|v| v["record"] == SCREEN_RECORD)
+            .collect()
+    }
+
     fn labels_scored(&self) -> Vec<String> {
         self.summary()
             .candidates
@@ -215,9 +229,7 @@ fn a_cohort_that_fits_the_budget_is_never_screened() {
     assert_eq!(run_with(&h.cli, Some(&scorer)).unwrap(), EXIT_IMPROVED);
 
     assert!(
-        !h.journal_lines()
-            .iter()
-            .any(|l| l.contains(SCREEN_PHASE_LABEL_PREFIX)),
+        h.screen_records().is_empty(),
         "no screen phase may be journalled: {:?}",
         h.journal_lines()
     );
@@ -315,9 +327,102 @@ fn a_loss_the_stratum_can_see_is_still_screened_out() {
     assert!(!h.out().join("population-candidate.json").exists());
     assert_eq!(h.summary().status, "nothingToDo");
     assert!(
-        h.journal_lines()
-            .iter()
-            .any(|l| l.contains(SCREEN_PHASE_LABEL_PREFIX)),
+        !h.screen_records().is_empty(),
         "the screen ran, and said so"
     );
+}
+
+// ---------------------------------------------------------------------------
+// 3. What a phase leaves behind (Issue #43)
+// ---------------------------------------------------------------------------
+
+/// The failure the issue opens with: three patches, `kept 0 of 3`, and no way
+/// to tell a working screen from a blind one. A stratum that resolves nothing
+/// has to say so in the journal — every delta exactly zero, every verdict
+/// `indistinguishable` — and the stratum's own size has to be there too, so its
+/// power is checkable once the staging directory is gone.
+#[test]
+fn a_stratum_that_resolved_nothing_journals_zero_deltas_not_a_bare_count() {
+    let h = Harness::new();
+    let mut cli = h.cli.clone();
+    cli.max_candidates = 2;
+    let patches: Vec<Enhancement> = [(0, 0.25), (1, -0.10), (0, 0.40)]
+        .iter()
+        .map(|(feature, right)| h.patch(*feature, *right))
+        .collect();
+    let ids: Vec<String> = patches.iter().map(|e| e.meta.id.clone()).collect();
+    h.file(patches);
+
+    let scorer = ByMode {
+        // The stratum holds none of the records these grafts fire on.
+        sample: ScriptedScorer::flat(STRATUM_BASELINE),
+        full: ScriptedScorer::flat(STRATUM_BASELINE).with("single-00", 0.60),
+    };
+    assert_eq!(run_with(&cli, Some(&scorer)).unwrap(), EXIT_IMPROVED);
+
+    let records = h.screen_records();
+    assert_eq!(records.len(), 2, "both strata journalled: {records:?}");
+    for record in &records {
+        assert_eq!(record["sampleRate"], 0.05);
+        assert_eq!(record["baselineScore"], STRATUM_BASELINE);
+        assert_eq!(
+            record["recordCount"], 1000,
+            "the stratum's own size, so its power is checkable: {record}"
+        );
+        assert_eq!(record["kept"], 3, "nothing visible, so nothing eliminated");
+        let measured = record["enhancements"].as_array().unwrap();
+        assert_eq!(measured.len(), 3);
+        for entry in measured {
+            assert_eq!(entry["delta"], 0.0);
+            assert_eq!(
+                entry["verdict"], "indistinguishable",
+                "a stratum that saw nothing is not a stratum that saw a loss"
+            );
+            assert_eq!(entry["kept"], true);
+            assert_eq!(entry["producer"], PRODUCER);
+        }
+        let journalled: Vec<&str> = measured.iter().map(|e| e["id"].as_str().unwrap()).collect();
+        for id in &ids {
+            assert!(journalled.contains(&id.as_str()), "{id} missing: {record}");
+        }
+    }
+}
+
+/// The other explanation of the same survivor count: the stratum *did* see the
+/// losses. Each delta is signed and negative, and each verdict is `worse` — the
+/// one verdict that eliminates.
+#[test]
+fn a_loss_the_stratum_could_see_journals_the_signed_delta_that_killed_it() {
+    let h = Harness::new();
+    let mut cli = h.cli.clone();
+    cli.max_candidates = 2;
+    h.file(
+        [(0, 0.25), (1, -0.10), (0, 0.40)]
+            .iter()
+            .map(|(feature, right)| h.patch(*feature, *right))
+            .collect(),
+    );
+
+    let scorer = ByMode {
+        // A loss of 3e-4 — the shape a 5% stratum is powered for.
+        sample: ScriptedScorer::flat(STRATUM_BASELINE - 3e-4).with("baseline", STRATUM_BASELINE),
+        // Never asked: the screen kept nothing.
+        full: ScriptedScorer::flat(STRATUM_BASELINE).with("single-00", 0.90),
+    };
+    assert_eq!(
+        run_with(&cli, Some(&scorer)).unwrap(),
+        neat_ai_rebase::cli::EXIT_NO_IMPROVEMENT
+    );
+
+    let records = h.screen_records();
+    assert_eq!(records.len(), 1, "phase 0 killed everything: {records:?}");
+    assert_eq!(records[0]["kept"], 0);
+    let measured = records[0]["enhancements"].as_array().unwrap();
+    assert_eq!(measured.len(), 3);
+    for entry in measured {
+        let delta = entry["delta"].as_f64().unwrap();
+        assert!((delta + 3e-4).abs() < 1e-12, "{entry}");
+        assert_eq!(entry["verdict"], "worse");
+        assert_eq!(entry["kept"], false);
+    }
 }

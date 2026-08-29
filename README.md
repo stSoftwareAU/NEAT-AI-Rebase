@@ -234,6 +234,24 @@ promote anything — a sampled mode is refused as a verdict — and selecting on
 one stratum without the held-out confirmation is a trap; see
 [`docs/rebase-protocol.md`](docs/rebase-protocol.md).
 
+**What a phase leaves behind.** Every phase journals a `screen` record naming,
+per enhancement, its sampled score and **signed delta** against that stratum's
+baseline, the verdict — `better`, `indistinguishable`, `worse`, `notScored` or
+`notBuilt` — and the records the stratum actually held, and prints the same
+lines on stderr:
+
+```text
+neat_ai_rebase: screen phase 0 kept 0 of 3 (baseline 0.500000 over 1000 records at rate 0.05)
+neat_ai_rebase:   7b7fc3fab572a0db neat-ai-forests/0.1.17 delta -3.000e-4 worse
+```
+
+A survivor count alone cannot be diagnosed: three deltas of `-3e-4` is the
+screen working, three of exactly `0.0` is a stratum that resolved nothing, and
+the two call for opposite responses. Only `worse` eliminates, so the deltas also
+show how close the rest came. The record count is there because the power of the
+comparison depends on it, and the staging directory is deleted on the way out
+(Issue #43).
+
 ### Outputs and exit codes
 
 | Output | Written when |

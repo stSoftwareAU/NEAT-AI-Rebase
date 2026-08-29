@@ -47,6 +47,7 @@
 //! "published" from "correctly published nothing" without parsing JSON. It is
 //! not an error, and a `set -e` caller should treat it as success.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
@@ -59,8 +60,8 @@ use crate::creature::{sha256_hex, validate_source_creature};
 use crate::engine::{EnhancementOutcome, RebaseOutcome, RebaseRequest, rebase};
 use crate::enhancement::{Enhancement, EnhancementBundle};
 use crate::harvest::harvest_delta;
-use crate::journal::{Journal, Record};
-use crate::scorer::{DirectoryScorer, ExternalScorer, ScorerMode, Verdict, judge};
+use crate::journal::{Journal, Record, ScreenVerdict, ScreenedEnhancement};
+use crate::scorer::{DirectoryScorer, ExternalScorer, ScoreResult, ScorerMode, Verdict, judge};
 use crate::tags::{CreatureMeta, RebaseStamp};
 
 /// Exit code: a verified improvement was emitted.
@@ -787,19 +788,60 @@ fn screening_budget(max_candidates: usize) -> usize {
     }
 }
 
-/// Whether the stratum can *see* this candidate losing to the champion.
+/// Score every enhancement offered to one screen phase against the stratum's
+/// baseline, and say which of them survive (Issue #43).
 ///
-/// A graft is an `IF` subtree that fires on a subset of records. When none of
-/// its firing records land in the stratum its sampled score is the baseline
-/// exactly — that is the stratum failing to resolve the candidate, not the
-/// candidate failing. Racing methods eliminate an arm only once it is behind,
-/// never on a bare point comparison, so only a candidate the stratum can see
-/// losing by more than the run's own resolution is dropped; a tie, a difference
-/// below `--min-improvement`, and a candidate the screen returned no score for
-/// are all undecided, and undecided goes to the authoritative pass that
-/// decides (Issue #42).
-fn measurably_worse(score: Option<f64>, baseline: f64, resolution: f64) -> bool {
-    score.is_some_and(|score| baseline - score > resolution)
+/// Returns the per-enhancement record in cohort order and the survivors in the
+/// same order, from one classification — so the line the journal carries and
+/// the decision the screen made can never disagree.
+///
+/// An enhancement the engine built no single-patch candidate for is reported as
+/// [`ScreenVerdict::NotBuilt`] rather than vanishing from the count: it did not
+/// lose on the stratum, the stratum never saw it.
+fn measure_phase(
+    outcome: &RebaseOutcome,
+    offered: &[Enhancement],
+    scores: &BTreeMap<String, ScoreResult>,
+    baseline: f64,
+    resolution: f64,
+) -> (Vec<ScreenedEnhancement>, Vec<Enhancement>) {
+    let mut measured = Vec::with_capacity(offered.len());
+    let mut survivors = Vec::new();
+    for candidate in outcome.candidates().filter(|c| c.applied_ids.len() == 1) {
+        let Some(enhancement) = offered
+            .iter()
+            .find(|e| e.meta.id == candidate.applied_ids[0])
+        else {
+            continue;
+        };
+        let score = scores.get(&candidate.label).map(|r| r.score);
+        let verdict = ScreenVerdict::classify(score, baseline, resolution);
+        measured.push(ScreenedEnhancement {
+            id: enhancement.meta.id.clone(),
+            producer: enhancement.meta.producer.clone(),
+            score,
+            delta: score.map(|s| s - baseline),
+            verdict,
+            kept: verdict.survives(),
+        });
+        if verdict.survives() {
+            survivors.push(enhancement.clone());
+        }
+    }
+    for enhancement in offered {
+        if measured.iter().any(|m| m.id == enhancement.meta.id) {
+            continue;
+        }
+        measured.push(ScreenedEnhancement {
+            id: enhancement.meta.id.clone(),
+            producer: enhancement.meta.producer.clone(),
+            score: None,
+            delta: None,
+            verdict: ScreenVerdict::NotBuilt,
+            kept: false,
+        });
+    }
+    (measured, survivors)
 }
 
 /// Narrow the cohort by dropping what a sample can see losing.
@@ -810,9 +852,14 @@ fn measurably_worse(score: Option<f64>, baseline: f64, resolution: f64) -> bool 
 /// survivors on different records drops most of those accidents before they
 /// reach the corpus.
 ///
-/// Elimination is one-sided: see [`measurably_worse`]. A candidate the stratum
-/// cannot resolve is carried forward, so the only thing the screen removes is
-/// work that a sample of the corpus already says is a loss.
+/// Elimination is one-sided: see [`ScreenVerdict::survives`]. A candidate the
+/// stratum cannot resolve is carried forward, so the only thing the screen
+/// removes is work that a sample of the corpus already says is a loss.
+///
+/// Every phase journals what it measured, per enhancement, as
+/// [`Record::Screen`] — the deltas and the size of the stratum that produced
+/// them, because the staging directory is deleted on the way out and a bare
+/// count of survivors cannot be diagnosed afterwards (Issue #43).
 ///
 /// Whatever survives still has to win the authoritative pass; this only decides
 /// what that pass is spent on.
@@ -851,35 +898,42 @@ fn screen(
         let scores = scorer
             .score_directory(&staging, training_data, ScorerMode::Sample { rate, phase })
             .map_err(|e| RunError::failure(e.to_string()))?;
-        let baseline = scores
+        let baseline_result = scores
             .get(crate::engine::BASELINE_LABEL)
-            .ok_or_else(|| RunError::failure("screen produced no baseline"))?
-            .score;
-        let survivors: Vec<Enhancement> = outcome
-            .candidates()
-            .filter(|c| c.applied_ids.len() == 1)
-            .filter(|c| {
-                !measurably_worse(
-                    scores.get(&c.label).map(|r| r.score),
-                    baseline,
-                    cli.min_improvement,
-                )
-            })
-            .filter_map(|c| kept.iter().find(|e| e.meta.id == c.applied_ids[0]).cloned())
-            .collect();
-        let _ = journal.append(&Record::Dropped {
-            label: format!("{}{phase}", crate::journal::SCREEN_PHASE_LABEL_PREFIX),
-            reason: format!(
-                "{} of {} enhancements were not measurably worse than the champion alone",
-                survivors.len(),
-                kept.len()
-            ),
+            .ok_or_else(|| RunError::failure("screen produced no baseline"))?;
+        let baseline = baseline_result.score;
+        let record_count = baseline_result.record_count;
+        let (measured, survivors) =
+            measure_phase(&outcome, &kept, &scores, baseline, cli.min_improvement);
+        let _ = journal.append(&Record::Screen {
+            phase,
+            sample_rate: rate,
+            resolution: cli.min_improvement,
+            baseline_score: baseline,
+            record_count,
+            kept: survivors.len(),
+            enhancements: measured.clone(),
         });
         eprintln!(
-            "neat_ai_rebase: screen phase {phase} kept {} of {}",
+            "neat_ai_rebase: screen phase {phase} kept {} of {} \
+             (baseline {baseline:.6} over {record_count} records at rate {rate})",
             survivors.len(),
             kept.len()
         );
+        for m in &measured {
+            // Scientific notation deliberately: `-3e-4` and `0.0` are the two
+            // explanations a survivor count cannot tell apart, and fixed-point
+            // rounding hides exactly that difference.
+            let delta = m
+                .delta
+                .map_or_else(|| "none".to_string(), |d| format!("{d:+.3e}"));
+            eprintln!(
+                "neat_ai_rebase:   {} {} delta {delta} {}",
+                m.id,
+                m.producer,
+                m.verdict.label()
+            );
+        }
         let _ = std::fs::remove_dir_all(&staging);
         if survivors.is_empty() {
             kept.clear();
@@ -1505,21 +1559,102 @@ mod tests {
 
     /// Issue #42: elimination is one-sided. Only a loss the stratum can see
     /// removes a candidate.
+    ///
+    /// Issue #43 moved the rule into [`ScreenVerdict`] so the journal and the
+    /// decision come from one classification; the cases are unchanged, and each
+    /// now also names *which* undecided case it is.
     #[test]
     fn only_a_loss_the_stratum_can_see_screens_a_candidate_out() {
-        assert!(measurably_worse(Some(0.40), 0.50, 1e-9));
-        assert!(
-            !measurably_worse(Some(0.50), 0.50, 1e-9),
+        let verdict = |score| ScreenVerdict::classify(score, 0.50, 1e-9);
+        assert_eq!(verdict(Some(0.40)), ScreenVerdict::Worse);
+        assert!(!verdict(Some(0.40)).survives());
+        assert_eq!(
+            verdict(Some(0.50)),
+            ScreenVerdict::Indistinguishable,
             "an exact tie is the stratum failing to resolve the graft, not a loss"
         );
-        assert!(
-            !measurably_worse(Some(0.50 - 5e-11), 0.50, 1e-9),
+        assert_eq!(
+            verdict(Some(0.50 - 5e-11)),
+            ScreenVerdict::Indistinguishable,
             "a difference below the run's own resolution decides nothing"
         );
-        assert!(!measurably_worse(Some(0.60), 0.50, 1e-9));
-        assert!(
-            !measurably_worse(None, 0.50, 1e-9),
+        assert_eq!(verdict(Some(0.60)), ScreenVerdict::Better);
+        assert_eq!(
+            verdict(None),
+            ScreenVerdict::NotScored,
             "no score is no evidence: the authoritative pass decides"
+        );
+        for undecided in [Some(0.50), Some(0.50 - 5e-11), Some(0.60), None] {
+            assert!(
+                verdict(undecided).survives(),
+                "only a visible loss eliminates: {undecided:?}"
+            );
+        }
+    }
+
+    /// Issue #43: an enhancement the stratum never saw is reported as such,
+    /// rather than disappearing from a survivor count that then reads as a
+    /// screen rejecting it.
+    #[test]
+    fn an_enhancement_no_candidate_was_built_for_is_journalled_not_dropped_silently() {
+        let champion = evolved_descendant(2.0, 0.5);
+        let built = forest("corpus-1", 0, 0.25);
+        let never_built = forest("a-corpus-from-somewhere-else", 1, -0.10);
+        let outcome = rebase(&RebaseRequest {
+            champion: &champion,
+            enhancements: std::slice::from_ref(&built),
+            corpus_identity: "corpus-1",
+            max_candidates: 0,
+        })
+        .unwrap();
+
+        let mut scores = BTreeMap::new();
+        for label in ["baseline", "single-00"] {
+            scores.insert(
+                label.to_string(),
+                ScoreResult {
+                    score: 0.5,
+                    error: 0.5,
+                    complexity_penalty: 0.0,
+                    record_count: 64,
+                    sample_rate: Some(0.05),
+                    gpu_backend: None,
+                    cost_name: None,
+                    time_taken: 0.0,
+                },
+            );
+        }
+        let offered = vec![built.clone(), never_built.clone()];
+        let (measured, survivors) = measure_phase(&outcome, &offered, &scores, 0.5, 1e-9);
+
+        assert_eq!(
+            measured.len(),
+            2,
+            "every enhancement offered is accounted for"
+        );
+        let missing = measured
+            .iter()
+            .find(|m| m.id == never_built.meta.id)
+            .expect("the unbuilt enhancement is still reported");
+        assert_eq!(missing.verdict, ScreenVerdict::NotBuilt);
+        assert!(
+            missing.delta.is_none(),
+            "no delta to claim: it was not scored"
+        );
+        assert!(!missing.kept);
+        let seen = measured
+            .iter()
+            .find(|m| m.id == built.meta.id)
+            .expect("the scored enhancement is reported");
+        assert_eq!(seen.verdict, ScreenVerdict::Indistinguishable);
+        assert_eq!(seen.delta, Some(0.0));
+        assert_eq!(
+            survivors
+                .iter()
+                .map(|e| e.meta.id.clone())
+                .collect::<Vec<_>>(),
+            vec![built.meta.id],
+            "only what the stratum actually saw is carried forward"
         );
     }
 

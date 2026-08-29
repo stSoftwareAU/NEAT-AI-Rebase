@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::journal::SCREEN_PHASE_LABEL_PREFIX;
+use crate::journal::{SCREEN_PHASE_LABEL_PREFIX, SCREEN_RECORD};
 
 /// Result statuses a run can record, always listed even at zero.
 ///
@@ -196,6 +196,10 @@ impl Report {
                 }
                 "dropped" => {
                     run.started = true;
+                    // How a screen phase was recorded before Issue #43 gave it
+                    // a record of its own. Journals in this shape are still on
+                    // disk, and a soak reading them back is still a soak that
+                    // screened.
                     if raw
                         .label
                         .as_deref()
@@ -203,6 +207,10 @@ impl Report {
                     {
                         run.screened = true;
                     }
+                }
+                SCREEN_RECORD => {
+                    run.started = true;
+                    run.screened = true;
                 }
                 "verdict" => {
                     run.started = true;
@@ -429,10 +437,26 @@ mod tests {
         )
     }
 
+    /// A screen phase as journals written before Issue #43 recorded it. Still
+    /// read back, so the runs those journals hold keep counting as screened.
     fn screen_line(kept: usize, of: usize) -> String {
         format!(
             r#"{{"record":"dropped","label":"{SCREEN_PHASE_LABEL_PREFIX}0","reason":"{kept} of {of} enhancements beat the champion alone"}}"#
         )
+    }
+
+    /// A screen phase in the shape Issue #43 introduced.
+    fn screen_record_line(kept: usize) -> String {
+        serde_json::to_string(&crate::journal::Record::Screen {
+            phase: 0,
+            sample_rate: 0.05,
+            resolution: 1e-9,
+            baseline_score: 0.5,
+            record_count: 1000,
+            enhancements: Vec::new(),
+            kept,
+        })
+        .unwrap()
     }
 
     fn write(dir: &Path, name: &str, text: &str) -> PathBuf {
@@ -632,6 +656,33 @@ mod tests {
         );
         let table = render(&report);
         assert!(table.contains("full pass rejected"), "{table}");
+    }
+
+    /// Issue #43: the structured screen record and the string it replaced are
+    /// both a screened run. A soak that spans the change must not lose half its
+    /// phases.
+    #[test]
+    fn both_screen_record_shapes_count_as_a_screened_run() {
+        let tmp = tempfile::tempdir().unwrap();
+        let text = [
+            run_journal(
+                "improved",
+                &[&screen_record_line(1), &verdict_line(0.03, true)],
+            ),
+            run_journal("improved", &[&screen_line(1, 3), &verdict_line(0.03, true)]),
+            run_journal("improved", &[&verdict_line(0.05, true)]),
+        ]
+        .concat();
+        let path = write(tmp.path(), "experiments.jsonl", &text);
+
+        let report = read_one(&path).unwrap();
+        assert_eq!(report.runs, 3);
+        assert_eq!(
+            report.screen.screened_runs, 2,
+            "the unscreened run is not counted, and neither shape is missed"
+        );
+        assert_eq!(report.screen.confirmed, 2);
+        assert_eq!(report.unreadable_lines, 0);
     }
 
     #[test]
