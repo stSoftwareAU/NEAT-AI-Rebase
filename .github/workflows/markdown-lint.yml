@@ -9,7 +9,10 @@ name: Markdown Lint
 
 on:
   pull_request:
-    branches: ["*"]
+    # `milestone/*` is listed explicitly because a workflow branch glob `*`
+    # stops at a `/`: without it, sub-issue PRs into `milestone/<slug>` merge
+    # unlinted (Issue #62).
+    branches: ["*", "milestone/*"]
   push:
     branches:
       - Develop

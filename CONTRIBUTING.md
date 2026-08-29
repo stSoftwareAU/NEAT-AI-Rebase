@@ -30,9 +30,11 @@ CI adds five gates `quality.sh` cannot run locally:
 * `.github/workflows/markdown-lint.yml` runs `markdownlint-cli2` over every
   Markdown file and fails on any violation. It needs no configuration flags —
   the globs, ignores and rule set all live in `.markdownlint-cli2.jsonc`, so
-  `npx markdownlint-cli2@0.23.2` reproduces the CI result exactly. Fix the
-  finding; disable a rule in that config only when it is genuinely noisy for
-  this repository, and say why in the PR description.
+  `npx markdownlint-cli2@0.23.2` reproduces the CI result exactly. Every PR is
+  linted, including the sub-issue PRs that target a shared `milestone/<slug>`
+  branch: the filter lists `milestone/*` alongside `*`, because a workflow glob
+  `*` stops at a `/`. Fix the finding; disable a rule in that config only when
+  it is genuinely noisy for this repository, and say why in the PR description.
 * `.github/workflows/cargo-audit.yml` audits the committed `Cargo.lock`
   against the RustSec advisory database on every PR **and** at 06:00 UTC every
   Monday. The schedule is what `cargo deny check` cannot give you: an advisory
