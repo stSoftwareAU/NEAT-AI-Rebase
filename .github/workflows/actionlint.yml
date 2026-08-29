@@ -1,0 +1,68 @@
+# Workflow lint for NEAT-AI-Rebase (Issue #56).
+#
+# `actionlint` is the standard linter for workflow YAML: it catches syntax
+# errors, undefined `${{ }}` context properties, bad `runs-on` labels and —
+# via shellcheck, which is preinstalled on the runner — shell bugs inside
+# `run:` blocks. Nothing else in this repository reads the workflows, so
+# without this gate a workflow regression only surfaces when a job silently
+# stops running.
+#
+# The linter is downloaded from its release page and checksum-verified before
+# it is unpacked, matching the gitleaks CLI fallback in `gitleaks.yml`: no new
+# third-party action is trusted, and a tampered release cannot execute here.
+# The lint itself is `./scripts/actionlint.sh`, the same script `quality.sh`
+# runs, so CI and a local run cannot drift.
+name: Actionlint
+
+on:
+  pull_request:
+    # `*` stops at a `/`, so it matches `Develop` but never
+    # `milestone/<slug>` — the shared branch milestone sub-issue PRs target.
+    # `milestone/*` is listed explicitly so those PRs are linted as they merge,
+    # rather than only when the rollup PR reaches the default branch.
+    # `rebase/tests/workflow_branch_filters.rs` holds this.
+    branches: ["*", "milestone/*"]
+  push:
+    branches:
+      - Develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: actionlint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    name: Workflow Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # The linter reads the checkout and nothing else — no fetch, no push —
+      # so no git credential needs to survive this step.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+        run: |
+          set -euo pipefail
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+          curl -sSfL "$url" -o "$archive"
+          echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "$archive" actionlint
+          rm -f "$archive"
+          install -m 0755 actionlint /usr/local/bin/actionlint
+          rm -f actionlint
+          actionlint --version
+
+      - name: Lint workflows
+        run: ./scripts/actionlint.sh
