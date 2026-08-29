@@ -100,6 +100,14 @@ format — the same bytes Forests writes to its own journal.
   falls left, exactly as it does inside the creature's own `IF` kernel.
 * `provenance` is documentation. It is excluded from the id.
 
+Producers do not have to build this envelope by hand: `PatchLog` (see
+[`integration.md`](integration.md)) records the opening facts once and stamps
+them on every accepted patch, filing the patch **as accepted** so the id stays
+the one the graft uses. It refuses a non-finite score, a patch version it does
+not implement, a non-finite weight, threshold or leaf, a bare-leaf root, an
+output or feature index the opening creature does not have, a condition that
+names one feature twice, and the same patch filed twice.
+
 ### `ockhamRemoval`
 
 A scorer-proven NEAT-AI-Ockham removal, by neuron UUID plus the strategy needed
