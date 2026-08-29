@@ -73,9 +73,25 @@ races), Birattari et al. 2002 (F-Race), Jamieson & Talwalkar 2016 (successive
 halving), Li et al. 2017 (Hyperband) — placed alongside the rest of the prior
 art under [Where this sits in the
 literature](../README.md#where-this-sits-in-the-literature). Those methods drop
-an arm only once it is *statistically* behind; Rebase's screen still drops one
-on a bare point comparison, which is
-[#42](https://github.com/stSoftwareAU/NEAT-AI-Rebase/issues/42).
+an arm only once it is *behind*, and since
+[#42](https://github.com/stSoftwareAU/NEAT-AI-Rebase/issues/42) so does Rebase:
+a candidate the stratum cannot resolve is carried to the corpus, not vetoed.
+
+Two things to know before setting the rate:
+
+* **The screen does not engage below the cap.** When the whole cohort fits
+  `--max-candidates` there is no corpus pass to save, so passing
+  `--screen-sample-rate` on a small bundle changes nothing except one line in
+  `experiments.jsonl` saying it was skipped. Three enhancements build six
+  candidates; at `--max-candidates 8` they all go straight to the corpus.
+* **It is powered for gross losses, not for the effects you are hunting.** A
+  stratum of rate `r` over `N` records resolves a difference `d` only while
+  `rN ≳ (σ/d)²`. At `r = 0.05` that is an effect of order **1e-2 to 1e-3** on
+  the sampled score — the shape of a patch that makes the champion clearly
+  worse. A live fleet's two *accepted* patches gained **7.1e-05** together and
+  its discard margin was **5.7e-05**: a 5% stratum cannot see either, which is
+  why a candidate it cannot resolve is carried forward and why only the full
+  corpus promotes anything. Choose the rate from the effect you need it to see.
 
 ### 5. Publish only what Rebase emits
 

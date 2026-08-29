@@ -78,6 +78,15 @@ pub const EXIT_NO_IMPROVEMENT: i32 = 3;
 /// Exit code: incompatible input; nothing could be attempted.
 pub const EXIT_INCOMPATIBLE: i32 = 4;
 
+/// Default `--max-candidates`: the authoritative pass's budget, in creatures
+/// scored over the whole corpus, excluding the baseline.
+///
+/// Also the cohort size above which an *uncapped* run (`--max-candidates 0`)
+/// is treated as large enough for the screen to pay for itself — with no cap
+/// there is no budget to compare against, so the documented default stands in
+/// for one (Issue #42).
+pub const DEFAULT_MAX_CANDIDATES: usize = 8;
+
 /// Rebase portable NEAT-AI improvements onto the latest champion.
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -162,7 +171,7 @@ pub struct Cli {
     pub min_improvement: f64,
 
     /// Maximum candidates to construct, excluding the baseline. `0` = no cap.
-    #[arg(long, default_value_t = 8, value_name = "N")]
+    #[arg(long, default_value_t = DEFAULT_MAX_CANDIDATES, value_name = "N")]
     pub max_candidates: usize,
 
     /// Build and validate candidates without scoring, and without writing a
@@ -171,7 +180,7 @@ pub struct Cli {
     pub dry_run: bool,
 
     /// Screen each enhancement on a sub-sample before the authoritative pass,
-    /// and carry forward only the ones that beat the champion on their own.
+    /// and drop the ones the stratum can see losing to the champion.
     ///
     /// Measured on a live fleet: of one donor's 13 patches, two improved the
     /// champion and eleven made it worse, and every cumulative prefix was
@@ -179,6 +188,11 @@ pub struct Cli {
     /// the full corpus finds the same answer, but a 14-patch cohort is ~28
     /// creatures over the whole corpus; screening first cuts that to a
     /// handful.
+    ///
+    /// Only engaged when the cohort does **not** already fit
+    /// `--max-candidates`: below that the screen cannot save a corpus pass, so
+    /// it would spend an extra scorer invocation only to discard information
+    /// (Issue #42).
     ///
     /// The screen only ever *narrows* what is scored authoritatively. It
     /// cannot promote anything — [`ScorerMode::Sample`] is refused as a
@@ -508,16 +522,40 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
 
     // Narrow the cohort before paying for the corpus. Never widens it, and
     // never promotes: `judge` refuses a sampled mode outright.
-    let outcome = match cli.screen_sample_rate {
-        Some(rate) if rate > 0.0 && rate < 1.0 && enhancements.len() > 1 => screen(
-            cli,
-            scorer,
-            &champion,
-            &enhancements,
-            &corpus_identity,
-            rate,
-            &journal,
-        )?,
+    //
+    // Only when it can buy something. The screen costs a scorer invocation of
+    // its own and can only ever discard information, so a cohort the
+    // authoritative pass was going to score in full anyway is handed straight
+    // to it — the full corpus is the better test, and it was already paid for
+    // (Issue #42).
+    let built = cohort_before_the_cap(&outcome);
+    let budget = screening_budget(cli.max_candidates);
+    let rate = cli.screen_sample_rate.filter(|r| *r > 0.0 && *r < 1.0);
+    let outcome = match rate {
+        Some(rate) if enhancements.len() > 1 => {
+            if built > budget {
+                screen(
+                    cli,
+                    scorer,
+                    &champion,
+                    &enhancements,
+                    &corpus_identity,
+                    rate,
+                    &journal,
+                )?
+            } else {
+                let reason = format!(
+                    "cohort of {built} fits the authoritative budget of {budget}; \
+                     screening could not save a corpus pass"
+                );
+                eprintln!("neat_ai_rebase: screen skipped — {reason}");
+                let _ = journal.append(&Record::Dropped {
+                    label: crate::journal::SCREEN_SKIPPED_LABEL.to_string(),
+                    reason,
+                });
+                outcome
+            }
+        }
         _ => outcome,
     };
     // The screen may have narrowed the cohort, and `rebase.json` has to record
@@ -726,13 +764,55 @@ fn harvest_from_creature(
         .map_err(RunError::incompatible)
 }
 
-/// Narrow the cohort to the enhancements that earn their place, on a sample.
+/// Candidates the authoritative pass would score if nothing were capped.
+///
+/// The cap is applied while the cohort is built, so what survived it is not the
+/// size of the work: the members dropped for the cap have to be added back to
+/// see what the screen would actually be saving.
+fn cohort_before_the_cap(outcome: &RebaseOutcome) -> usize {
+    outcome.candidates().count() + outcome.dropped_for_cap.len()
+}
+
+/// The cohort size above which the screen can pay for itself.
+///
+/// `--max-candidates` is the number of creatures the authoritative pass is
+/// willing to score, so a cohort that fits it costs the same with or without a
+/// screen. An uncapped run has no such number; the documented default stands in
+/// for one rather than letting a 14-patch cohort reach the corpus unscreened.
+fn screening_budget(max_candidates: usize) -> usize {
+    if max_candidates == 0 {
+        DEFAULT_MAX_CANDIDATES
+    } else {
+        max_candidates
+    }
+}
+
+/// Whether the stratum can *see* this candidate losing to the champion.
+///
+/// A graft is an `IF` subtree that fires on a subset of records. When none of
+/// its firing records land in the stratum its sampled score is the baseline
+/// exactly — that is the stratum failing to resolve the candidate, not the
+/// candidate failing. Racing methods eliminate an arm only once it is behind,
+/// never on a bare point comparison, so only a candidate the stratum can see
+/// losing by more than the run's own resolution is dropped; a tie, a difference
+/// below `--min-improvement`, and a candidate the screen returned no score for
+/// are all undecided, and undecided goes to the authoritative pass that
+/// decides (Issue #42).
+fn measurably_worse(score: Option<f64>, baseline: f64, resolution: f64) -> bool {
+    score.is_some_and(|score| baseline - score > resolution)
+}
+
+/// Narrow the cohort by dropping what a sample can see losing.
 ///
 /// Two strata, not one. Selecting on a stratum and trusting that selection is
 /// circular — with N candidates some beat the champion on any given stratum by
 /// chance, and "keep the winners" picks exactly those. Re-screening the
 /// survivors on different records drops most of those accidents before they
 /// reach the corpus.
+///
+/// Elimination is one-sided: see [`measurably_worse`]. A candidate the stratum
+/// cannot resolve is carried forward, so the only thing the screen removes is
+/// work that a sample of the corpus already says is a loss.
 ///
 /// Whatever survives still has to win the authoritative pass; this only decides
 /// what that pass is spent on.
@@ -778,13 +858,19 @@ fn screen(
         let survivors: Vec<Enhancement> = outcome
             .candidates()
             .filter(|c| c.applied_ids.len() == 1)
-            .filter(|c| scores.get(&c.label).is_some_and(|r| r.score > baseline))
+            .filter(|c| {
+                !measurably_worse(
+                    scores.get(&c.label).map(|r| r.score),
+                    baseline,
+                    cli.min_improvement,
+                )
+            })
             .filter_map(|c| kept.iter().find(|e| e.meta.id == c.applied_ids[0]).cloned())
             .collect();
         let _ = journal.append(&Record::Dropped {
             label: format!("{}{phase}", crate::journal::SCREEN_PHASE_LABEL_PREFIX),
             reason: format!(
-                "{} of {} enhancements beat the champion alone",
+                "{} of {} enhancements were not measurably worse than the champion alone",
                 survivors.len(),
                 kept.len()
             ),
@@ -1297,7 +1383,12 @@ mod tests {
 
         // On the screen, only `good` beats the champion; `bad` loses. The
         // authoritative pass should then never be asked about `bad`.
+        //
+        // The cap is tightened to 2 because the screen now engages only when it
+        // can save a corpus pass (Issue #42): this cohort is baseline + bundle +
+        // two singles, which the default budget of 8 would have swallowed whole.
         let mut cli = h.cli.clone();
+        cli.max_candidates = 2;
         cli.screen_sample_rate = Some(0.5);
         let scorer = ScriptedScorer::flat(0.50)
             .with("single-00", 0.60)
@@ -1329,6 +1420,8 @@ mod tests {
             ],
         );
         let mut cli = h.cli.clone();
+        // Same tightened cap as above, and for the same reason (Issue #42).
+        cli.max_candidates = 2;
         cli.screen_sample_rate = Some(0.5);
         // Everything loses on the screen.
         let scorer = ScriptedScorer::flat(0.50)
@@ -1338,6 +1431,96 @@ mod tests {
         assert_eq!(run_with(&cli, Some(&scorer)).unwrap(), EXIT_NO_IMPROVEMENT);
         assert!(!out(&cli).join("population-candidate.json").exists());
         assert_eq!(summary(out(&cli)).status, "nothingToDo");
+    }
+
+    /// Issue #42: the gate is the budget, not the enhancement count.
+    #[test]
+    fn the_budget_gate_measures_the_cohort_the_cap_hid() {
+        let champion = evolved_descendant(2.0, 0.5);
+        let h = harness(&champion);
+        let enhancements: Vec<Enhancement> = (0..3)
+            .map(|i| forest(&h.corpus_identity, i % 2, 0.20 + i as f32 * 0.05))
+            .collect();
+        let build = |max_candidates| {
+            rebase(&RebaseRequest {
+                champion: &champion,
+                enhancements: &enhancements,
+                corpus_identity: &h.corpus_identity,
+                max_candidates,
+            })
+            .unwrap()
+        };
+
+        // A cap of 2 hides most of the cohort behind `dropped_for_cap`; the
+        // gate has to see the work the authoritative pass would have done.
+        let capped = build(2);
+        assert!(
+            !capped.dropped_for_cap.is_empty(),
+            "the cap must bite for this test to mean anything"
+        );
+        assert_eq!(
+            cohort_before_the_cap(&capped),
+            build(0).candidates().count(),
+            "the gate counts every candidate built, capped or not"
+        );
+        assert!(cohort_before_the_cap(&capped) > screening_budget(2));
+        assert!(
+            cohort_before_the_cap(&build(8)) <= screening_budget(8),
+            "the default budget swallows this cohort whole: nothing to screen for"
+        );
+    }
+
+    /// Issue #42: an uncapped run has no budget, so the documented default is
+    /// the threshold — a large cohort is still screened.
+    #[test]
+    fn an_uncapped_run_screens_only_a_cohort_past_the_default_budget() {
+        assert_eq!(screening_budget(0), DEFAULT_MAX_CANDIDATES);
+        assert_eq!(screening_budget(3), 3);
+
+        let champion = evolved_descendant(2.0, 0.5);
+        let h = harness(&champion);
+        let uncapped = |enhancements: &[Enhancement]| {
+            cohort_before_the_cap(
+                &rebase(&RebaseRequest {
+                    champion: &champion,
+                    enhancements,
+                    corpus_identity: &h.corpus_identity,
+                    max_candidates: 0,
+                })
+                .unwrap(),
+            )
+        };
+        let many: Vec<Enhancement> = (0..5)
+            .map(|i| forest(&h.corpus_identity, i % 2, 0.20 + i as f32 * 0.05))
+            .collect();
+        assert!(
+            uncapped(&many[..2]) <= screening_budget(0),
+            "two enhancements are four creatures: the corpus can afford them"
+        );
+        assert!(
+            uncapped(&many) > screening_budget(0),
+            "five enhancements overflow the default budget and are worth screening"
+        );
+    }
+
+    /// Issue #42: elimination is one-sided. Only a loss the stratum can see
+    /// removes a candidate.
+    #[test]
+    fn only_a_loss_the_stratum_can_see_screens_a_candidate_out() {
+        assert!(measurably_worse(Some(0.40), 0.50, 1e-9));
+        assert!(
+            !measurably_worse(Some(0.50), 0.50, 1e-9),
+            "an exact tie is the stratum failing to resolve the graft, not a loss"
+        );
+        assert!(
+            !measurably_worse(Some(0.50 - 5e-11), 0.50, 1e-9),
+            "a difference below the run's own resolution decides nothing"
+        );
+        assert!(!measurably_worse(Some(0.60), 0.50, 1e-9));
+        assert!(
+            !measurably_worse(None, 0.50, 1e-9),
+            "no score is no evidence: the authoritative pass decides"
+        );
     }
 
     #[test]
