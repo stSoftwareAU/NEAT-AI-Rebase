@@ -1,7 +1,8 @@
 ## Summary
 
 No gate in this repository read the GitHub Actions workflows, so an invalid
-`${{ }}` expression, an undefined context property, a bad `runs-on` label or a
+{% raw %}`${{ }}`{% endraw %} expression, an undefined context property, a bad
+`runs-on` label or a
 shell bug inside a `run:` block only surfaced when a job silently stopped
 gating. This PR adds `actionlint` as a CI lint gate. Closes #56.
 
