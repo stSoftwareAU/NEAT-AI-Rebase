@@ -519,10 +519,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 error: scored.error,
                 champion_score: baseline.score,
                 // No producer filed a claim here: the union harness harvests
-                // discoveries the population already holds, so the only score
-                // anyone asserted for the opening creature is the champion's
-                // own. The claim delta then restates the rebase delta, which
-                // is the truth of this harness rather than a second reading.
+                // discoveries the population already holds, and this run
+                // scored the base itself. So the source score is validated,
+                // not claimed — and because the base *is* the champion, the
+                // source delta restates the rebase delta, which is the truth
+                // of this harness rather than a second reading.
                 source_score: SourceScore::Validated(baseline.score),
                 applied: *n,
                 label,

@@ -79,9 +79,9 @@ fn a_validation_below_the_claim_is_a_claim_delta_not_a_decline() {
 #[test]
 fn a_validation_above_the_claim_is_reported_against_the_claim_too() {
     let message = rebase_message(&RebaseStamp {
-        score: 0.5,
-        error: 0.5,
-        champion_score: 0.4,
+        score: 0.55,
+        error: 0.45,
+        champion_score: 0.5,
         source_score: SourceScore::Claimed(0.45),
         applied: 1,
         label: "single-00",
@@ -93,7 +93,11 @@ fn a_validation_above_the_claim_is_reported_against_the_claim_too() {
         "{message}"
     );
     assert!(
-        message.contains("claim delta +5.00e-2 vs claimed 0.450000"),
+        message.contains("champion 0.500000 → rebased 0.550000"),
+        "the validated champion is above the 0.45 claim: {message}"
+    );
+    assert!(
+        message.contains("claim delta +1.00e-1 vs claimed 0.450000"),
         "{message}"
     );
     assert_reads_cleanly(&message);
@@ -135,6 +139,7 @@ fn an_attempted_rebase_that_wins_nothing_names_the_champion_that_held() {
         source_score: SourceScore::Claimed(0.6),
         attempted: 2,
         source: "neat-ai-forests",
+        min_improvement: 1e-9,
     });
 
     assert!(
@@ -163,6 +168,7 @@ fn a_verdict_with_no_candidate_scored_says_so_rather_than_inventing_one() {
         source_score: SourceScore::Claimed(0.6),
         attempted: 1,
         source: "harvest",
+        min_improvement: 1e-9,
     });
 
     assert!(message.contains("no candidate scored"), "{message}");
@@ -262,6 +268,9 @@ impl Harness {
         std::fs::read_to_string(self.out().join("experiments.jsonl"))
             .unwrap()
             .lines()
+            // A run killed mid-write leaves a partial last line, which the
+            // journal treats as normal; the `expect` below still fails loudly
+            // if no readable `result` record was written at all.
             .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
             .find(|v| v["record"] == "result")
             .expect("every run journals a result")["detail"]

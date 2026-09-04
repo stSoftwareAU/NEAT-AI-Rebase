@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, HashSet};
 use neat_core::{CreatureExport, creature_to_json};
 use serde_json::{Map, Value};
 
-pub use crate::message::{RebaseStamp, rebase_message};
+use crate::message::{RebaseStamp, rebase_message};
 
 /// One `{ name, value }` tag.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -206,6 +206,7 @@ impl CreatureMeta {
 mod tests {
     use super::*;
     use crate::fixtures::linear_hidden_creature;
+    use crate::message::SourceScore;
 
     fn tagged_json() -> String {
         let creature = linear_hidden_creature(2.0);
@@ -266,7 +267,7 @@ mod tests {
             score: 0.3965,
             error: 0.6035,
             champion_score: 0.39644,
-            source_score: crate::message::SourceScore::Claimed(0.396463),
+            source_score: SourceScore::Claimed(0.396463),
             applied: 4,
             label: "bundle",
             source: "harvest",

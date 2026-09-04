@@ -168,8 +168,11 @@ Neither the champion file nor any enhancement file is ever written to.
 `3` is deliberately not `0` so a caller can tell "published" from "correctly
 published nothing" without parsing JSON. It is not an error.
 
-Both outcomes also write one line saying what happened — to the journal's
-`result` record, and on a win to the emitted creature's `rebase` tag:
+A run that reached the scorer also writes one line saying what happened,
+whichever way the verdict went — to the journal's `result` record, and on a win
+to the emitted creature's `rebase` tag. A run that scored nothing at all
+(`nothingToDo`, `incompatible`, `dryRun`) has no scores to compare and writes no
+such line:
 
 ```text
 🪢 Rebase applied · 2 enhancements from neat-ai-forests · champion 0.419407 → rebased 0.419751 (+3.44e-4) · claim delta -1.50e-3 vs claimed 0.421251

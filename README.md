@@ -270,10 +270,12 @@ comparison depends on it, and the staging directory is deleted on the way out
 
 ### What a run says it did
 
-Every run writes one line describing its outcome, to the journal's `result`
-record and — on a win — to the emitted creature's `rebase` tag. Downstream that
-line becomes a commit subject, so it names every number's baseline rather than
-leaving a reader to guess:
+Every run **that reaches the authoritative scorer** writes one line describing
+its outcome, to the journal's `result` record and — on a win — to the emitted
+creature's `rebase` tag. (A run that scored nothing — `nothingToDo`,
+`incompatible`, `dryRun` — has no scores to compare and writes no such line.)
+Downstream the line becomes a commit subject, so it names every number's
+baseline rather than leaving a reader to guess:
 
 ```text
 🪢 Rebase applied · 2 enhancements from neat-ai-forests · champion 0.419407 → rebased 0.419751 (+3.44e-4) · claim delta -1.50e-3 vs claimed 0.421251

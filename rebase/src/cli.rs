@@ -673,6 +673,7 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
                     .collect::<BTreeSet<_>>()
                     .len(),
                 source: &summary.producer,
+                min_improvement: cli.min_improvement,
             }),
         ),
     };

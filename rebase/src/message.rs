@@ -43,13 +43,6 @@ pub enum SourceScore {
 }
 
 impl SourceScore {
-    /// The number, whichever way it was measured.
-    pub fn value(self) -> f64 {
-        match self {
-            Self::Claimed(v) | Self::Validated(v) => v,
-        }
-    }
-
     /// `delta vs baseline`, in the wording that names how the baseline was
     /// arrived at.
     fn against(self, score: f64) -> String {
@@ -97,6 +90,12 @@ pub struct NoImprovement<'a> {
     pub attempted: usize,
     /// Where the enhancements came from.
     pub source: &'a str,
+    /// The gain a candidate had to clear to win.
+    ///
+    /// Named in the line whenever the best candidate scored *above* the
+    /// champion and still lost, because "held" beside a positive delta is
+    /// exactly the relationship a reader would otherwise have to guess.
+    pub min_improvement: f64,
 }
 
 /// Population skim line for a promoted candidate; becomes the sampler commit
@@ -154,6 +153,7 @@ pub fn rebase_message(stamp: &RebaseStamp<'_>) -> String {
 ///     source_score: SourceScore::Claimed(0.6),
 ///     attempted: 2,
 ///     source: "neat-ai-forests",
+///     min_improvement: 1e-9,
 /// });
 /// assert!(line.contains("champion 0.500000 held"));
 /// assert!(line.contains("best candidate 0.490000 (-1.00e-2)"));
@@ -161,9 +161,17 @@ pub fn rebase_message(stamp: &RebaseStamp<'_>) -> String {
 pub fn no_improvement_message(miss: &NoImprovement<'_>) -> String {
     let best = match miss.best_score {
         Some(best) => format!(
-            "best candidate {:.6} ({:+.2e}) · {}",
+            "best candidate {:.6} ({:+.2e}{}) · {}",
             best,
             best - miss.champion_score,
+            // A candidate can beat the champion and still lose, by not
+            // clearing the threshold. Left unsaid, "held" beside a positive
+            // delta reads as a contradiction.
+            if best > miss.champion_score {
+                format!(", under the {:.2e} needed", miss.min_improvement)
+            } else {
+                String::new()
+            },
             miss.source_score.against(best),
         ),
         // Absent, not zero. Inventing a `0.000000` best candidate would report
@@ -225,6 +233,7 @@ mod tests {
             source_score: SourceScore::Claimed(0.45),
             attempted: 2,
             source: "harvest",
+            min_improvement: 1e-9,
         });
         assert!(held.starts_with("🪢 "), "{held}");
     }
@@ -282,15 +291,37 @@ mod tests {
             source_score: SourceScore::Validated(0.45),
             attempted: 2,
             source: "harvest",
+            min_improvement: 1e-9,
         });
         assert!(held.contains("vs validated source 0.450000"), "{held}");
         assert!(!held.contains("claim"), "{held}");
     }
 
+    /// A candidate that beat the champion and still lost says why, rather
+    /// than pairing "held" with a positive delta and leaving the reader to
+    /// work out that a threshold exists.
     #[test]
-    fn the_value_is_readable_whichever_way_it_was_measured() {
-        assert!((SourceScore::Claimed(0.45).value() - 0.45).abs() < 1e-12);
-        assert!((SourceScore::Validated(0.45).value() - 0.45).abs() < 1e-12);
+    fn a_positive_delta_that_lost_names_the_threshold_it_missed() {
+        let held = no_improvement_message(&NoImprovement {
+            champion_score: 0.5,
+            best_score: Some(0.5000001),
+            source_score: SourceScore::Claimed(0.45),
+            attempted: 2,
+            source: "harvest",
+            min_improvement: 1e-3,
+        });
+        assert!(held.contains("under the 1.00e-3 needed"), "{held}");
+
+        // A candidate that simply lost needs no such explanation.
+        let plain = no_improvement_message(&NoImprovement {
+            champion_score: 0.5,
+            best_score: Some(0.4),
+            source_score: SourceScore::Claimed(0.45),
+            attempted: 2,
+            source: "harvest",
+            min_improvement: 1e-3,
+        });
+        assert!(!plain.contains("needed"), "{plain}");
     }
 
     #[test]
@@ -306,6 +337,7 @@ mod tests {
             source_score: SourceScore::Claimed(0.45),
             attempted: 1,
             source: "harvest",
+            min_improvement: 1e-9,
         });
         assert!(held.contains("1 enhancement from harvest"), "{held}");
         assert!(held.contains("no candidate scored"), "{held}");
