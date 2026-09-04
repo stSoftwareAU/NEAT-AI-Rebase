@@ -26,6 +26,7 @@
 //! | construct the candidate | [`forest`], [`ockham`] | never mutate the champion |
 //! | build a cohort | [`engine`] | baseline, singles, prefixes, full bundle; de-duplicated |
 //! | decide | [`scorer`] | NEAT-AI-scorer, one call, fail closed |
+//! | say what happened | [`message`] | claimed / champion / rebased, every delta against a named baseline |
 //! | read it back | [`report`] | `neat_ai_rebase report <experiments.jsonl>...`, over one run or a whole soak |
 //!
 //! ## The rules that do not bend
@@ -79,6 +80,7 @@ pub mod fixtures;
 pub mod forest;
 pub mod harvest;
 pub mod journal;
+pub mod message;
 pub mod ockham;
 pub mod patch;
 pub mod patch_log;

@@ -38,8 +38,9 @@ use neat_ai_rebase::creature::{creature_checksum, validate_source_creature};
 use neat_ai_rebase::engine::{EnhancementOutcome, RebaseRequest, rebase};
 use neat_ai_rebase::enhancement::Enhancement;
 use neat_ai_rebase::harvest::{harvest_selected, patch_ids};
+use neat_ai_rebase::message::{RebaseStamp, SourceScore};
 use neat_ai_rebase::scorer::{DirectoryScorer, ExternalScorer, ScoreResult, ScorerMode};
-use neat_ai_rebase::tags::{CreatureMeta, RebaseStamp};
+use neat_ai_rebase::tags::CreatureMeta;
 use neat_core::training_data::TrainingDataConfig;
 use neat_core::{CreatureExport, creature_to_json, parse_creature_json};
 
@@ -517,7 +518,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 score: scored.score,
                 error: scored.error,
                 champion_score: baseline.score,
-                source_score: baseline.score,
+                // No producer filed a claim here: the union harness harvests
+                // discoveries the population already holds, so the only score
+                // anyone asserted for the opening creature is the champion's
+                // own. The claim delta then restates the rebase delta, which
+                // is the truth of this harness rather than a second reading.
+                source_score: SourceScore::Validated(baseline.score),
                 applied: *n,
                 label,
                 source: "population-union",

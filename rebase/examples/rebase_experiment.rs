@@ -27,8 +27,9 @@ use neat_ai_rebase::corpus::corpus_info;
 use neat_ai_rebase::creature::{creature_checksum, validate_source_creature};
 use neat_ai_rebase::engine::{EnhancementOutcome, RebaseRequest, rebase};
 use neat_ai_rebase::harvest::{harvest_delta, patch_ids};
+use neat_ai_rebase::message::{RebaseStamp, SourceScore};
 use neat_ai_rebase::scorer::{DirectoryScorer, ExternalScorer, ScoreResult, ScorerMode};
-use neat_ai_rebase::tags::{CreatureMeta, RebaseStamp};
+use neat_ai_rebase::tags::CreatureMeta;
 use neat_core::training_data::TrainingDataConfig;
 use neat_core::{CreatureExport, creature_to_json, parse_creature_json};
 
@@ -300,7 +301,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 score: scored.score,
                 error: scored.error,
                 champion_score: get(&results, CHAMPION)?.score,
-                source_score: get(&results, FOREST)?.score,
+                source_score: SourceScore::Validated(get(&results, FOREST)?.score),
                 applied: candidate.applied_ids.len(),
                 label: &candidate.label,
                 source: "harvest",

@@ -268,6 +268,35 @@ comparison depends on it, and the staging directory is deleted on the way out
 | `4` | incompatible input: nothing could be attempted |
 | `1` | operational or scorer failure |
 
+### What a run says it did
+
+Every run writes one line describing its outcome, to the journal's `result`
+record and — on a win — to the emitted creature's `rebase` tag. Downstream that
+line becomes a commit subject, so it names every number's baseline rather than
+leaving a reader to guess:
+
+```text
+🪢 Rebase applied · 2 enhancements from neat-ai-forests · champion 0.419407 → rebased 0.419751 (+3.44e-4) · claim delta -1.50e-3 vs claimed 0.421251
+🪢 Rebase not applied · 2 enhancements from neat-ai-forests · champion 0.500000 held · best candidate 0.490000 (-1.00e-2) · claim delta -1.10e-1 vs claimed 0.600000
+```
+
+| Word | The score it names | Who measured it |
+| --- | --- | --- |
+| `claimed` | the producer's own figure for the creature it filed the enhancements from | the producer, on its older opening creature |
+| `validated source` | the same source creature, re-scored here | this run's authoritative scorer |
+| `champion` | the champion the replay was measured against | this run's authoritative scorer |
+| `rebased` | the promoted candidate | this run's authoritative scorer |
+
+The two deltas answer different questions and are never blurred together. The
+arrow is the rebase's own gain — what replaying the discoveries onto the current
+champion added. The **claim delta** is the mismatch between what the producer
+claimed and what authoritative scoring found, and it is routinely negative
+because the producer measured itself on an older, easier creature. That is a
+disagreement between two measurements, not the creature getting worse, so it is
+never reported as a decline (Issue #80). A source score this run measured
+itself is a **source delta vs validated source**, because a claim and a
+measurement are different facts.
+
 ## Scope
 
 Version 1 implements the enhancement types whose semantics are clear:

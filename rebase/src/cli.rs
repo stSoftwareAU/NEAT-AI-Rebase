@@ -47,7 +47,7 @@
 //! "published" from "correctly published nothing" without parsing JSON. It is
 //! not an error, and a `set -e` caller should treat it as success.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
@@ -61,8 +61,11 @@ use crate::engine::{EnhancementOutcome, RebaseOutcome, RebaseRequest, rebase};
 use crate::enhancement::{Enhancement, EnhancementBundle};
 use crate::harvest::harvest_delta;
 use crate::journal::{Journal, Record, ScreenVerdict, ScreenedEnhancement};
+use crate::message::{
+    NoImprovement, RebaseStamp, SourceScore, no_improvement_message, rebase_message,
+};
 use crate::scorer::{DirectoryScorer, ExternalScorer, ScoreResult, ScorerMode, Verdict, judge};
-use crate::tags::{CreatureMeta, RebaseStamp};
+use crate::tags::CreatureMeta;
 
 /// Exit code: a verified improvement was emitted.
 pub const EXIT_IMPROVED: i32 = 0;
@@ -440,13 +443,14 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
     }
     let producer = enhancements[0].meta.producer.clone();
     let opening_checksum = enhancements[0].meta.base_checksum.clone();
-    // The score of the creature the discoveries came from, as its producer
-    // measured it. Read here because `--enhancements` and `--harvest-from`
+    // What the producer *claimed* for the creature the discoveries came from,
+    // measured by that producer on its own opening creature and never by this
+    // run's scorer. Read here because `--enhancements` and `--harvest-from`
     // both land it in the same place: a harvest fills it from the donor's own
-    // `score` tag, a bundle from what the producer claimed. It goes into the
-    // `rebase` tag so a reader can see that publishing that creature on its
-    // own would have been a loss.
-    let source_score = enhancements[0].meta.improved_score;
+    // `score` tag, a bundle from what the producer claimed. Every message this
+    // run writes names it as the claim, so a reader is never left comparing it
+    // with an authoritative number as though the two shared a baseline.
+    let claimed_score = enhancements[0].meta.improved_score;
 
     let outcome = rebase(&RebaseRequest {
         champion: &champion,
@@ -507,13 +511,13 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
             ("nothingToDo", EXIT_NO_IMPROVEMENT)
         };
         summary.status = status.into();
-        finish(output_dir, &journal, &summary, status, None)?;
+        finish(output_dir, &journal, &summary, status, None, None)?;
         return Ok(code);
     }
 
     if cli.dry_run {
         summary.status = "dryRun".into();
-        finish(output_dir, &journal, &summary, "dryRun", None)?;
+        finish(output_dir, &journal, &summary, "dryRun", None, None)?;
         return Ok(EXIT_IMPROVED);
     }
 
@@ -572,7 +576,7 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
         .collect();
     if outcome.is_empty() {
         summary.status = "nothingToDo".into();
-        finish(output_dir, &journal, &summary, "nothingToDo", None)?;
+        finish(output_dir, &journal, &summary, "nothingToDo", None, None)?;
         return Ok(EXIT_NO_IMPROVEMENT);
     }
 
@@ -587,7 +591,11 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
     .map_err(|e| RunError::failure(e.to_string()))?;
     let _ = journal.append(&Record::Verdict(Box::new(verdict.clone())));
 
-    let emitted = match &verdict.winner {
+    // Two outputs from one match: the checksum of whatever was emitted, and
+    // the one-line story of what this run decided. Both outcomes get a
+    // message, in the same vocabulary — a soak's log is unreadable when a win
+    // and a hold are described in different terms (Issue #80).
+    let (emitted, detail) = match &verdict.winner {
         Some(winner) => {
             let creature = outcome
                 .cohort
@@ -625,15 +633,16 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
             // with this run's own numbers.
             let mut meta = champion_meta.clone();
             meta.retain_neurons(&creature.creature);
-            meta.stamp(&RebaseStamp {
+            let stamp = RebaseStamp {
                 score: winner.result.score,
                 error: winner.result.error,
                 champion_score: verdict.baseline.score,
-                source_score,
+                source_score: SourceScore::Claimed(claimed_score),
                 applied: winner.applied_ids.len(),
                 label: &winner.label,
                 source: &summary.producer,
-            });
+            };
+            meta.stamp(&stamp);
             let tagged = meta
                 .serialize_with(&creature.creature, false)
                 .map_err(RunError::failure)?;
@@ -646,9 +655,26 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
             // caller receives*, which now carry the tags. A caller checking
             // what it was handed hashes the file, so that is what
             // `emittedChecksum` has to be.
-            Some(sha256_hex(tagged.as_bytes()))
+            (Some(sha256_hex(tagged.as_bytes())), rebase_message(&stamp))
         }
-        None => None,
+        // A hold is a normal result, and it is reported as loudly as a win:
+        // which champion stood, how close the best candidate came, and how
+        // that candidate compares with what the producer claimed.
+        None => (
+            None,
+            no_improvement_message(&NoImprovement {
+                champion_score: verdict.baseline.score,
+                best_score: verdict.candidates.first().map(|c| c.result.score),
+                source_score: SourceScore::Claimed(claimed_score),
+                attempted: summary
+                    .candidates
+                    .iter()
+                    .flat_map(|c| &c.applied_ids)
+                    .collect::<BTreeSet<_>>()
+                    .len(),
+                source: &summary.producer,
+            }),
+        ),
     };
 
     let status = if emitted.is_some() {
@@ -659,7 +685,14 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
     summary.status = status.into();
     summary.verdict = Some(verdict);
     summary.emitted_checksum = emitted.clone();
-    finish(output_dir, &journal, &summary, status, emitted)?;
+    finish(
+        output_dir,
+        &journal,
+        &summary,
+        status,
+        Some(detail),
+        emitted,
+    )?;
     Ok(if status == "improved" {
         EXIT_IMPROVED
     } else {
@@ -685,6 +718,7 @@ fn finish(
     journal: &Journal,
     summary: &RebaseSummary,
     status: &str,
+    detail: Option<String>,
     emitted_checksum: Option<String>,
 ) -> Result<(), RunError> {
     let path = output_dir.join("rebase.json");
@@ -695,7 +729,7 @@ fn finish(
     journal
         .append(&Record::Result {
             status: status.to_string(),
-            detail: None,
+            detail,
             emitted_checksum,
         })
         .map_err(RunError::failure)?;

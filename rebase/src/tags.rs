@@ -27,6 +27,8 @@ use std::collections::{BTreeMap, HashSet};
 use neat_core::{CreatureExport, creature_to_json};
 use serde_json::{Map, Value};
 
+pub use crate::message::{RebaseStamp, rebase_message};
+
 /// One `{ name, value }` tag.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tag {
@@ -200,58 +202,6 @@ impl CreatureMeta {
     }
 }
 
-/// What the `rebase` tag reports about a promoted candidate.
-#[derive(Debug, Clone, Copy)]
-pub struct RebaseStamp<'a> {
-    /// Authoritative score of the promoted candidate.
-    pub score: f64,
-    /// Authoritative error of the promoted candidate.
-    pub error: f64,
-    /// Score of the champion it was built on, from the same scorer call.
-    pub champion_score: f64,
-    /// Score of the creature whose discoveries were rebased, same call.
-    pub source_score: f64,
-    /// How many enhancements the promoted candidate applied.
-    pub applied: usize,
-    /// Which cohort member won (`bundle`, `single-02`, …).
-    pub label: &'a str,
-    /// Where the enhancements came from (`neat-ai-forests`, `harvest`, …).
-    pub source: &'a str,
-}
-
-/// Population skim line; becomes the sampler commit subject.
-///
-/// The 🪢 prefix is the `rebase` tag's emoji (NEAT-AI-Rebase #12): a knot is
-/// two lineages tied back together, which is exactly what a rebase does —
-/// an improvement found on an older incumbent reconciled with the latest
-/// champion, rather than one lineage replacing the other.
-///
-/// It names both numbers a reader needs to see that the rebase was worth
-/// doing: how far the promoted creature beat the champion it was built on,
-/// and how far it beat the creature whose discoveries it borrowed. The second
-/// is the one that says publishing that creature alone would have been a loss.
-pub fn rebase_message(stamp: &RebaseStamp<'_>) -> String {
-    format!(
-        // `{:+.2e}` carries its own sign. The gain over the champion is always
-        // positive — nothing else is emitted — but the gain over the source is
-        // routinely negative and says something worth reading when it is: the
-        // donor scored higher on its own opening creature than the rebased
-        // candidate does on the current champion. A hardcoded `+` printed that
-        // as `+-2.29e-6`.
-        "🪢 Rebase · {} {} from {} · score: {:.6} ({:+.2e} vs champion, {:+.2e} vs source)",
-        stamp.applied,
-        if stamp.applied == 1 {
-            "enhancement"
-        } else {
-            "enhancements"
-        },
-        stamp.source,
-        stamp.score,
-        stamp.score - stamp.champion_score,
-        stamp.score - stamp.source_score,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,7 +266,7 @@ mod tests {
             score: 0.3965,
             error: 0.6035,
             champion_score: 0.39644,
-            source_score: 0.396463,
+            source_score: crate::message::SourceScore::Claimed(0.396463),
             applied: 4,
             label: "bundle",
             source: "harvest",
@@ -331,10 +281,10 @@ mod tests {
         assert_eq!(after.last().unwrap(), "rebase");
         let message = meta.get("rebase").unwrap();
         assert!(
-            message.starts_with("🪢 Rebase · 4 enhancements from harvest"),
+            message.starts_with("🪢 Rebase applied · 4 enhancements from harvest"),
             "{message}"
         );
-        assert!(message.contains("vs source"), "{message}");
+        assert!(message.contains("vs claimed"), "{message}");
     }
 
     #[test]
@@ -347,61 +297,5 @@ mod tests {
         creature.neurons.retain(|n| n.uuid != "h1");
         meta.retain_neurons(&creature);
         assert!(meta.neuron_tags.is_empty());
-    }
-
-    /// The `rebase` tag maps to 🪢 (NEAT-AI-Rebase #12). Pinned rather than
-    /// left to the format string, because the sampler's commit subjects are
-    /// keyed on the prefix and a silent change would be invisible until
-    /// someone scanned the log looking for rebases and found none.
-    #[test]
-    fn the_rebase_tag_uses_the_knot_emoji() {
-        let m = rebase_message(&RebaseStamp {
-            score: 0.5,
-            error: 0.5,
-            champion_score: 0.4,
-            source_score: 0.45,
-            applied: 2,
-            label: "bundle",
-            source: "harvest",
-        });
-        assert!(m.starts_with("🪢 "), "the rebase tag is 🪢, got: {m}");
-        assert!(
-            !m.contains('🔀'),
-            "the old shuffle emoji must not come back: {m}"
-        );
-    }
-
-    #[test]
-    fn the_message_names_both_comparisons() {
-        let m = rebase_message(&RebaseStamp {
-            score: 0.5,
-            error: 0.5,
-            champion_score: 0.4,
-            source_score: 0.45,
-            applied: 1,
-            label: "single-00",
-            source: "neat-ai-forests",
-        });
-        assert!(m.contains("1 enhancement from neat-ai-forests"), "{m}");
-        assert!(m.contains("+1.00e-1 vs champion"), "{m}");
-        assert!(m.contains("+5.00e-2 vs source"), "{m}");
-    }
-
-    /// A rebased candidate routinely scores below the donor's own claim — the
-    /// donor measured itself on an older, easier opening creature. The message
-    /// has to report that as a loss, not render it as `+-2.29e-6`.
-    #[test]
-    fn a_candidate_below_the_source_reads_as_a_loss_against_it() {
-        let m = rebase_message(&RebaseStamp {
-            score: 0.4,
-            error: 0.6,
-            champion_score: 0.39,
-            source_score: 0.45,
-            applied: 2,
-            label: "bundle",
-            source: "harvest/best.json",
-        });
-        assert!(m.contains("-5.00e-2 vs source"), "{m}");
-        assert!(!m.contains("+-"), "a sign is never printed twice: {m}");
     }
 }

@@ -168,6 +168,20 @@ Neither the champion file nor any enhancement file is ever written to.
 `3` is deliberately not `0` so a caller can tell "published" from "correctly
 published nothing" without parsing JSON. It is not an error.
 
+Both outcomes also write one line saying what happened — to the journal's
+`result` record, and on a win to the emitted creature's `rebase` tag:
+
+```text
+🪢 Rebase applied · 2 enhancements from neat-ai-forests · champion 0.419407 → rebased 0.419751 (+3.44e-4) · claim delta -1.50e-3 vs claimed 0.421251
+🪢 Rebase not applied · 2 enhancements from neat-ai-forests · champion 0.500000 held · best candidate 0.490000 (-1.00e-2) · claim delta -1.10e-1 vs claimed 0.600000
+```
+
+`claimed` is the producer's own figure, taken on its older opening creature;
+`champion` and `rebased` both come from this run's authoritative scorer. A
+negative **claim delta** is two measurements disagreeing, not the creature
+declining, and the wording says so — see the README for the full vocabulary
+(Issue #80).
+
 ## What Rebase will not do
 
 * It will not modify the champion, or any enhancement file.
