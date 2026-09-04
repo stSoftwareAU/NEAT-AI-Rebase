@@ -209,7 +209,8 @@ pub enum Record {
     Result {
         /// `improved` / `noImprovement` / `nothingToDo` / `failed`.
         status: String,
-        /// Detail, for a failure or a refusal.
+        /// What the run decided, in one line — the same message the
+        /// emitted creature's `rebase` tag carries — or why it refused.
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
         /// Checksum of the creature written as `population-candidate.json`.
