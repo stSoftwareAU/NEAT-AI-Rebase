@@ -42,7 +42,7 @@ use neat_core::CreatureExport;
 use crate::creature::creature_checksum;
 use crate::enhancement::{Enhancement, Payload, ProducerContext};
 use crate::forest::graft_anchor;
-use crate::patch::{Condition, Node, Patch, Provenance, Term};
+use crate::patch::{Condition, MAX_PATCH_DEPTH, Node, Patch, Provenance, Term};
 
 /// Prefix every Forest graft gives the neurons it appends.
 const FOREST_PREFIX: &str = "forest-";
@@ -379,8 +379,10 @@ fn read_branch(index: &Index<'_>, uuid: &str, members: &BTreeSet<&str>) -> Resul
 }
 
 /// Depth bound; a Forest tree is depth 3 in production and the bound only stops
-/// a malformed cycle from recursing forever.
-const MAX_DEPTH: usize = 16;
+/// a malformed cycle from recursing forever. It is
+/// [`crate::patch::MAX_PATCH_DEPTH`], the same number the forward path bounds
+/// an incoming bundle against — one constant for both directions.
+const MAX_DEPTH: usize = MAX_PATCH_DEPTH;
 
 fn build(uuid: &str, branches: &HashMap<&str, Branch>, depth: usize) -> Result<Node, String> {
     if depth > MAX_DEPTH {
