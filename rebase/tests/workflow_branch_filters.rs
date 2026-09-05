@@ -212,6 +212,28 @@ fn actionlint_still_gates_unnested_branches() {
 }
 
 #[test]
+fn dependency_review_gates_milestone_pull_requests() {
+    let filter = workflow_filter("dependency-review.yml");
+    for branch in ["milestone/rebase-v1", "milestone/producer-wiring"] {
+        assert!(
+            matches_any(&filter, branch),
+            "dependency-review.yml filter {filter:?} does not gate PRs into {branch}"
+        );
+    }
+}
+
+#[test]
+fn dependency_review_still_gates_unnested_branches() {
+    let filter = workflow_filter("dependency-review.yml");
+    for branch in ["Develop", "main", "issue-84-fix"] {
+        assert!(
+            matches_any(&filter, branch),
+            "dependency-review.yml filter {filter:?} stopped gating PRs into {branch}"
+        );
+    }
+}
+
+#[test]
 fn semgrep_gates_milestone_pull_requests() {
     let filter = workflow_filter("semgrep.yml");
     for branch in ["milestone/rebase-v1", "milestone/producer-wiring"] {
