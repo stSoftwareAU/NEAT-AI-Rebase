@@ -25,6 +25,14 @@ on:
 permissions:
   contents: read
 
+# Matches `ci.yml`, `actionlint.yml`, `cargo-audit.yml` and `markdown-lint.yml`
+# (Issue #85): a `synchronize` push cancels the superseded scan, so the
+# container SAST run — 20 minutes at its timeout — is not left burning CI
+# minutes on a head nobody is reviewing.
+concurrency:
+  group: semgrep-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   semgrep:
     name: SAST Scan

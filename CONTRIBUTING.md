@@ -26,7 +26,10 @@ blocks. It runs `./scripts/actionlint.sh`, the same script `quality.sh` calls,
 so a workflow regression fails locally before it reaches CI. Every PR is
 linted, including the sub-issue PRs that target a shared `milestone/<slug>`
 branch: the filter lists `milestone/*` alongside `*`, because a workflow glob
-`*` stops at a `/`. Install the linter with
+`*` stops at a `/`. It has no `push:` trigger either, for the same reason
+`ci.yml` has none — the PR run already gates the merge (Issue #83); re-run it
+by hand with `workflow_dispatch` when you need a fresh result on the default
+branch. Install the linter with
 `go install github.com/rhysd/actionlint/cmd/actionlint@latest` or the
 [documented download](https://github.com/rhysd/actionlint/blob/main/docs/install.md);
 a missing `actionlint` fails the gate rather than skipping it.
@@ -50,7 +53,10 @@ CI adds five gates `quality.sh` cannot run locally:
   against GitHub's advisory database and fails on any advisory, at any
   severity. It overlaps `cargo deny check` deliberately: cargo-deny audits the
   whole resolved graph from RustSec, this reports only what the PR introduces,
-  and pinned GitHub Actions are covered too. Upgrade past the advisory; if it
+  and pinned GitHub Actions are covered too. Every PR is reviewed, including
+  the sub-issue PRs that target a shared `milestone/<slug>` branch: the filter
+  lists `milestone/*` alongside `*`, because a workflow glob `*` stops at a
+  `/`. Upgrade past the advisory; if it
   is genuinely inapplicable, allow that one ID with `allow-ghsas` in the
   workflow and say why in the PR description.
 * `.github/workflows/markdown-lint.yml` runs `markdownlint-cli2` over every
@@ -79,6 +85,12 @@ CI adds five gates `quality.sh` cannot run locally:
   that one ID in `.cargo/audit.toml` (cargo-audit does not read `deny.toml`),
   add the same ID to `deny.toml` so both gates agree, and say why in the PR
   description.
+
+Every workflow that triggers on `pull_request` declares a `concurrency:` group
+keyed by `${{ github.ref }}` with `cancel-in-progress: true`, so pushing again
+to a PR cancels the run it supersedes instead of paying for a result nobody
+will read (Issue #85). `rebase/tests/workflow_concurrency.rs` holds this for
+every PR-triggered workflow, so a new gate cannot be added without it.
 
 ## What a change has to preserve
 

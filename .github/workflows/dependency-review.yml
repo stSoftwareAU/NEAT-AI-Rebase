@@ -18,10 +18,23 @@ name: Dependency Review
 
 on:
   pull_request:
-    branches: ["*"]
+    # `*` stops at a `/`, so it matches `Develop` but never
+    # `milestone/<slug>` — the shared branch milestone sub-issue PRs target.
+    # `milestone/*` is listed explicitly so those PRs are reviewed for
+    # vulnerable dependencies as they merge, rather than only when the rollup
+    # PR reaches `Develop` (Issue #84).
+    # `rebase/tests/workflow_branch_filters.rs` holds this.
+    branches: ["*", "milestone/*"]
 
 permissions:
   contents: read
+
+# Matches `ci.yml`, `actionlint.yml`, `cargo-audit.yml` and `markdown-lint.yml`
+# (Issue #85): a `synchronize` push cancels the review still running against the
+# superseded head, rather than leaving a stale result to race the new one.
+concurrency:
+  group: dependency-review-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   dependency-review:

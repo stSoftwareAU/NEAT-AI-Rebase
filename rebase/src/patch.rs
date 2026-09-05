@@ -25,6 +25,16 @@ use serde::{Deserialize, Serialize};
 /// Current patch format version — matches `forests::patch::PATCH_FORMAT_VERSION`.
 pub const PATCH_FORMAT_VERSION: u32 = 1;
 
+/// Deepest patch tree this build will accept from a bundle file.
+///
+/// A production Forest tree is depth 3, so the bound is generous. It exists
+/// because every walk over a [`Node`] is recursive — `evaluate`, `is_finite`,
+/// `depth`, and the graft's emitter — and a bundle is an untrusted artefact: a
+/// deeply nested `split` chain would otherwise exhaust the process stack rather
+/// than fail closed with a reason (Issue #90). The reverse direction,
+/// [`crate::harvest`], has always bounded itself against the same constant.
+pub const MAX_PATCH_DEPTH: usize = 16;
+
 /// One weighted feature in a (possibly oblique) condition.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Term {
@@ -133,6 +143,21 @@ impl Node {
         match self {
             Self::Leaf { .. } => 0,
             Self::Split { left, right, .. } => 1 + left.depth().max(right.depth()),
+        }
+    }
+
+    /// `true` when the tree is deeper than `limit` (a leaf is depth 0).
+    ///
+    /// Unlike [`Node::depth`] this stops descending as soon as the answer is
+    /// known, so it recurses at most `limit + 1` frames deep and is safe to
+    /// call on a tree that arrived from an untrusted bundle. It is the guard
+    /// every other recursive walk here is checked behind.
+    pub fn deeper_than(&self, limit: usize) -> bool {
+        match self {
+            Self::Leaf { .. } => false,
+            Self::Split { left, right, .. } => {
+                limit == 0 || left.deeper_than(limit - 1) || right.deeper_than(limit - 1)
+            }
         }
     }
 
@@ -368,6 +393,45 @@ mod tests {
             .features(),
             vec![0, 1]
         );
+    }
+
+    /// `deeper_than` agrees with `depth` on both sides of the bound, and
+    /// answers without descending the whole tree (Issue #90).
+    #[test]
+    fn depth_bound_is_exact_on_both_sides() {
+        let leaf = Node::leaf(0.0);
+        assert!(!leaf.deeper_than(0));
+
+        let stump = Node::stump(0, 0.5, 0.0, 1.0);
+        assert_eq!(stump.depth(), 1);
+        assert!(stump.deeper_than(0));
+        assert!(!stump.deeper_than(1));
+
+        // A chain one level past the bound is refused; one at the bound is not.
+        let mut node = Node::leaf(0.0);
+        for _ in 0..MAX_PATCH_DEPTH {
+            node = Node::Split {
+                condition: Condition::axis(0, 0.5),
+                left: Box::new(Node::leaf(0.0)),
+                right: Box::new(node),
+            };
+        }
+        assert_eq!(node.depth(), MAX_PATCH_DEPTH);
+        assert!(!node.deeper_than(MAX_PATCH_DEPTH));
+        let past = Node::Split {
+            condition: Condition::axis(0, 0.5),
+            left: Box::new(Node::leaf(0.0)),
+            right: Box::new(node),
+        };
+        assert!(past.deeper_than(MAX_PATCH_DEPTH));
+
+        // Depth is the maximum over both branches, not just the first.
+        let right_heavy = Node::Split {
+            condition: Condition::axis(0, 0.5),
+            left: Box::new(Node::leaf(0.0)),
+            right: Box::new(Node::stump(0, 0.5, 0.0, 1.0)),
+        };
+        assert!(right_heavy.deeper_than(1));
     }
 
     #[test]

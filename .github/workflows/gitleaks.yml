@@ -25,6 +25,13 @@ permissions:
   contents: read
   pull-requests: read
 
+# Matches `ci.yml`, `actionlint.yml`, `cargo-audit.yml` and `markdown-lint.yml`
+# (Issue #85): a `synchronize` push cancels the superseded scan, so the
+# full-history fetch below is not paid for twice on the same pull request.
+concurrency:
+  group: gitleaks-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gitleaks:
     name: Secrets Detection

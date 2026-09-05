@@ -62,7 +62,7 @@ use neat_core::{
 use crate::adapter::Application;
 use crate::compat::Incompatibility;
 use crate::creature::{output_uuid, outputs_are_last, validate_creature};
-use crate::patch::{Node, Patch};
+use crate::patch::{MAX_PATCH_DEPTH, Node, Patch};
 
 /// How far past aggregate neurons the anchor walk descends.
 ///
@@ -157,6 +157,15 @@ fn graft(
             "patch format version {} is not supported (this build implements {})",
             patch.version,
             crate::patch::PATCH_FORMAT_VERSION
+        )));
+    }
+    // Checked before `is_finite` and the emitter, because both recurse once per
+    // level of the tree they are handed (Issue #90). A patch that reaches here
+    // from anywhere other than a parsed bundle is bounded by this, not by the
+    // parse.
+    if patch.root.deeper_than(MAX_PATCH_DEPTH) {
+        return Err(refuse(format!(
+            "patch nests deeper than {MAX_PATCH_DEPTH}; refusing"
         )));
     }
     if !patch.root.is_finite() {

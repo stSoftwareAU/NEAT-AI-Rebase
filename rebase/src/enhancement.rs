@@ -55,7 +55,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::creature::sha256_hex;
-use crate::patch::Patch;
+use crate::patch::{MAX_PATCH_DEPTH, Patch};
 
 /// Version of the portable enhancement envelope this build understands.
 ///
@@ -322,7 +322,29 @@ impl Enhancement {
         // payload shape is refused as "unsupported version" rather than as
         // whichever field happens to be missing from the v1 shape.
         check_version(text)?;
-        serde_json::from_str(text).map_err(|e| EnhancementError::Malformed(e.to_string()))
+        let one: Self =
+            serde_json::from_str(text).map_err(|e| EnhancementError::Malformed(e.to_string()))?;
+        one.check_patch_depth()?;
+        Ok(one)
+    }
+
+    /// Refuse a patch tree deeper than this build walks (Issue #90).
+    ///
+    /// A bundle is an untrusted artefact and every walk over a
+    /// [`crate::patch::Node`] recurses — `is_finite`, `evaluate`, and the
+    /// graft's emitter — so the bound belongs at the parse boundary, before
+    /// any of them sees the tree. The check itself recurses no deeper than
+    /// [`MAX_PATCH_DEPTH`].
+    fn check_patch_depth(&self) -> Result<(), EnhancementError> {
+        let Payload::ForestPatch { patch } = &self.payload else {
+            return Ok(());
+        };
+        if patch.root.deeper_than(MAX_PATCH_DEPTH) {
+            return Err(EnhancementError::Malformed(format!(
+                "patch nests deeper than {MAX_PATCH_DEPTH}; refusing"
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -367,6 +389,7 @@ impl EnhancementBundle {
                     supported: ENHANCEMENT_FORMAT_VERSION,
                 });
             }
+            e.check_patch_depth()?;
         }
         Ok(bundle)
     }
