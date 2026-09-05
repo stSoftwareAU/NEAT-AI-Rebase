@@ -22,9 +22,11 @@ on:
     # rather than only when the rollup PR reaches the default branch.
     # `rebase/tests/workflow_branch_filters.rs` holds this.
     branches: ["*", "milestone/*"]
-  push:
-    branches:
-      - Develop
+  # No `push:` trigger: this is a checker, not a deploy. As a required status
+  # check it already gates every merge on the PR, so re-running it on the push
+  # to `Develop` only duplicates that run — wasted CI minutes, and a red tick
+  # on the default branch for a check that already passed (Issue #83).
+  # `rebase/tests/workflow_push_triggers.rs` holds this.
   workflow_dispatch:
 
 permissions:

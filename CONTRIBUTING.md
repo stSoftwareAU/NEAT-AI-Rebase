@@ -26,7 +26,10 @@ blocks. It runs `./scripts/actionlint.sh`, the same script `quality.sh` calls,
 so a workflow regression fails locally before it reaches CI. Every PR is
 linted, including the sub-issue PRs that target a shared `milestone/<slug>`
 branch: the filter lists `milestone/*` alongside `*`, because a workflow glob
-`*` stops at a `/`. Install the linter with
+`*` stops at a `/`. It has no `push:` trigger either, for the same reason
+`ci.yml` has none — the PR run already gates the merge (Issue #83); re-run it
+by hand with `workflow_dispatch` when you need a fresh result on the default
+branch. Install the linter with
 `go install github.com/rhysd/actionlint/cmd/actionlint@latest` or the
 [documented download](https://github.com/rhysd/actionlint/blob/main/docs/install.md);
 a missing `actionlint` fails the gate rather than skipping it.
