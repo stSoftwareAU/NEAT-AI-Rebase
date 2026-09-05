@@ -53,7 +53,10 @@ CI adds five gates `quality.sh` cannot run locally:
   against GitHub's advisory database and fails on any advisory, at any
   severity. It overlaps `cargo deny check` deliberately: cargo-deny audits the
   whole resolved graph from RustSec, this reports only what the PR introduces,
-  and pinned GitHub Actions are covered too. Upgrade past the advisory; if it
+  and pinned GitHub Actions are covered too. Every PR is reviewed, including
+  the sub-issue PRs that target a shared `milestone/<slug>` branch: the filter
+  lists `milestone/*` alongside `*`, because a workflow glob `*` stops at a
+  `/`. Upgrade past the advisory; if it
   is genuinely inapplicable, allow that one ID with `allow-ghsas` in the
   workflow and say why in the PR description.
 * `.github/workflows/markdown-lint.yml` runs `markdownlint-cli2` over every
