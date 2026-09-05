@@ -86,6 +86,12 @@ CI adds five gates `quality.sh` cannot run locally:
   add the same ID to `deny.toml` so both gates agree, and say why in the PR
   description.
 
+Every workflow that triggers on `pull_request` declares a `concurrency:` group
+keyed by `${{ github.ref }}` with `cancel-in-progress: true`, so pushing again
+to a PR cancels the run it supersedes instead of paying for a result nobody
+will read (Issue #85). `rebase/tests/workflow_concurrency.rs` holds this for
+every PR-triggered workflow, so a new gate cannot be added without it.
+
 ## What a change has to preserve
 
 Rebase exists to stop useful discoveries being destroyed at population
