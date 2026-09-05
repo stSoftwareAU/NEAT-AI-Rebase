@@ -4,8 +4,14 @@
 # update` refreshes `Cargo.lock`, and the result is proposed as a pull request
 # against `Develop` instead of being pushed. Nothing merges itself: the bump is
 # judged by a human and by the PR gates (`ci.yml`, `dependency-review.yml`,
-# `cargo-audit.yml`), which is also what keeps a crate published minutes ago
-# from landing unreviewed — cargo-edit has no release-age quarantine of its own.
+# `cargo-audit.yml`).
+#
+# cargo-edit has no release-age quarantine of its own, so a version published
+# minutes ago by a compromised publishing account would otherwise be proposed
+# before crates.io or RustSec could flag it — `cargo deny check` and the suite
+# judge advisories and behaviour, never recency. `scripts/crates-quarantine.sh`
+# is that missing gate and runs below, before the pull request is opened
+# (Issue #91).
 #
 # Three things are deliberately different from `cargo-audit.yml`, the closest
 # neighbour:
@@ -109,6 +115,23 @@ jobs:
             git diff --stat -- Cargo.toml rebase/Cargo.toml Cargo.lock
           fi
 
+      # Publish-age quarantine (Issue #91). The baseline comes from `HEAD`,
+      # which is `Develop` as checked out above, so only the versions this bump
+      # actually moved are judged — an unchanged crate is not re-queried every
+      # week. A version public for less than 24h fails the run and no pull
+      # request is raised; the next scheduled run proposes it once the window
+      # has passed. No `--exempt` is needed today: `neat-core` is a `path`
+      # dependency and no internal crate is consumed from crates.io.
+      - name: Quarantine freshly published crate versions
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          git show HEAD:Cargo.lock > "$RUNNER_TEMP/Cargo.lock.baseline"
+          ./scripts/crates-quarantine.sh \
+            --baseline-lockfile "$RUNNER_TEMP/Cargo.lock.baseline" \
+            --lockfile Cargo.lock \
+            --hours 24
+
       - name: Install cargo-deny (prebuilt binary)
         if: steps.changes.outputs.changed == 'true'
         uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2.81.10
@@ -152,5 +175,9 @@ jobs:
             and `cargo test --workspace --all-features` before this pull request
             was opened. Semver-incompatible bumps are deliberately excluded —
             see the workflow log for any crate reported as `incompatible`.
+
+            Every version this bump moved has been public on crates.io for at
+            least 24 hours (`scripts/crates-quarantine.sh`, Issue #91), so a
+            release published minutes ago cannot arrive here.
 
             Review it like any other dependency change: the PR gates decide.

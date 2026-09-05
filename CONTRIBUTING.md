@@ -131,3 +131,21 @@ rewrites the `neat-core` path dependency, which cargo-edit reports as `local`.
 The scheduled run verifies its own bump with `cargo deny check` and the test
 suite before raising the PR, so a broken upgrade fails the run instead of
 arriving as a pull request.
+
+It also refuses to propose a crate version published in the last 24 hours.
+`scripts/crates-quarantine.sh` reads the `created_at` of every crates.io
+version the bump newly resolved and fails the run when one is younger than the
+window — `cargo deny check` judges advisories, not recency, so without it a
+compromised release could be proposed before anyone had a chance to flag it.
+Run it by hand the same way the workflow does:
+
+```bash
+git show HEAD:Cargo.lock > /tmp/Cargo.lock.baseline
+./scripts/crates-quarantine.sh \
+  --baseline-lockfile /tmp/Cargo.lock.baseline --lockfile Cargo.lock --hours 24
+```
+
+It exits 0 when clear, 1 on a quarantined version and 2 when it could not read
+a publish date — an unreachable crates.io is never reconciled as a pass.
+Internal `stSoftwareAU` crates are exempt via `--exempt`; none are consumed
+from crates.io today, since `neat-core` is a `path` dependency.
