@@ -33,6 +33,17 @@ The `kind` names an operation this build does not implement — a future
 
 *Retry:* no. Same remedy.
 
+### Patch nested too deep
+
+A `forestPatch` tree deeper than 16 levels (`patch::MAX_PATCH_DEPTH`; a
+production Forest tree is depth 3). A bundle is an untrusted file and every walk
+over the tree recurses once per level, so the depth is bounded at the parse
+boundary — the whole document is refused before anything evaluates, validates or
+grafts it, rather than the process aborting on a stack overflow. The graft
+applies the same bound to a patch that reaches it from anywhere else.
+
+*Retry:* no. Fix the producer.
+
 ### Identity mismatch
 
 `meta.id` is not the id the payload actually has. Idempotence relies on the id

@@ -99,6 +99,12 @@ format — the same bytes Forests writes to its own journal.
   in term order with `1.0 · −threshold` added last. `NaN` therefore always
   falls left, exactly as it does inside the creature's own `IF` kernel.
 * `provenance` is documentation. It is excluded from the id.
+* The tree is at most **16 levels** deep (`patch::MAX_PATCH_DEPTH`; a production
+  Forest tree is depth 3). A bundle is an untrusted file and every walk over the
+  tree recurses, so a deeper one is refused as malformed at the parse boundary —
+  before anything evaluates, validates or grafts it — and refused again by the
+  graft for a patch that arrives from anywhere else. The reverse direction,
+  `--harvest-from`, has always bounded itself against the same number.
 
 Producers do not have to build this envelope by hand: `PatchLog` (see
 [`integration.md`](integration.md)) records the opening facts once and stamps
