@@ -171,7 +171,10 @@ setting no file can prove, so the configuration is the only signal a reviewer
 can read from the tree. It deliberately sets `open-pull-requests-limit: 0`:
 `cargo-upgrade.yml` is the single bump path because it is the one that applies
 the 24-hour publish-age quarantine, and a second weekly bumper without that
-window would propose exactly the release the gate holds back. Dependabot
+window would propose exactly the release the gate holds back. It also sets
+`cooldown.default-days: 7` — Dependabot's own publish-age window, wider than
+the script's 24 hours — so the quarantine still holds should that limit ever be
+raised. Dependabot
 security updates are a separate repository switch and are not governed by that
 limit. `rebase/tests/dependabot_config.rs` holds both halves, so the
 configuration cannot be dropped or quietly turned into a competing bumper.

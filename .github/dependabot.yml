@@ -14,9 +14,11 @@
 # `.github/workflows/cargo-upgrade.yml` is this repository's single bump path,
 # and it runs `scripts/crates-quarantine.sh` over every crates.io version the
 # bump newly resolves, refusing anything published in the last 24 hours
-# (Issue #91). A second weekly bumper with no publish-age window would propose
-# exactly the release that gate exists to hold back, so the cargo entry pins
-# `open-pull-requests-limit: 0`. Dependabot *security* updates are governed by
+# (Issue #91). A second weekly bumper would propose exactly the release that
+# gate exists to hold back, so the cargo entry pins
+# `open-pull-requests-limit: 0` *and* sets a `cooldown` of 7 days, Dependabot's
+# own publish-age window, so the quarantine still holds if the limit is ever
+# raised. Dependabot *security* updates are governed by
 # the repository's own security-updates setting, not by this limit — the two are
 # separate switches, which is why disabling version updates here does not
 # disable the alerting this file is committed for.
@@ -35,7 +37,11 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "Etc/UTC"
+    # Hold back versions published in the last 7 days — Dependabot's own
+    # publish-age window, wider than the 24 hours `scripts/crates-quarantine.sh`
+    # enforces. It binds only when version updates are on, so it is the standing
+    # guard should `open-pull-requests-limit` ever be raised.
+    cooldown:
+      default-days: 7
     # Version updates stay with the quarantined workflow — see the note above.
-    # Do not raise this without giving Dependabot an equivalent publish-age
-    # window, which it has no setting for today.
     open-pull-requests-limit: 0

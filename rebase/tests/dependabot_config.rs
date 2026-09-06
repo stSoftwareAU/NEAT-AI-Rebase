@@ -172,6 +172,23 @@ fn cargo_version_update_pull_requests_stay_with_the_quarantined_workflow() {
 }
 
 #[test]
+fn cargo_updates_wait_out_a_publish_age_cooldown() {
+    let config = dependabot_config();
+    let cargo = ecosystem_entry(&config, "cargo").expect("the cargo ecosystem is registered");
+
+    let days: u32 = cargo
+        .get("cooldown.default-days")
+        .expect("the cargo entry sets a `cooldown` publish-age window")
+        .parse()
+        .expect("`cooldown.default-days` is a whole number of days");
+    assert!(
+        days >= 7,
+        "a newly published version can be malicious or unstable; Dependabot must hold \
+         it for at least 7 days, found {days}"
+    );
+}
+
+#[test]
 fn a_configuration_without_a_cargo_entry_is_rejected() {
     // The parser must not report a pass for a configuration that registers some
     // other ecosystem — the shape this suite exists to catch.
