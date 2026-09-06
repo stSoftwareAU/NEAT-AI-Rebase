@@ -27,6 +27,10 @@ that answers for its gates.
   the pull-request run of `cargo-audit.yml` need no notification of their own: a
   failure blocks the merge in front of the author, who triages it. A gitleaks
   hit is treated as a live credential — rotate first, then clean the history.
+* `.github/workflows/sbom.yml` also runs on a schedule, at 07:00 UTC every
+  Monday, but needs no notification either: the same job runs on every pull
+  request, so a break in SBOM generation goes red in front of an author rather
+  than waiting for the weekly run to be noticed.
 
 ## Scope
 

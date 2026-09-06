@@ -18,6 +18,11 @@
 /NEAT-AI-core/
 /NEAT-AI-core
 
+# Generated SBOMs (`scripts/generate-sbom.sh`). Derived from Cargo.lock and
+# cargo metadata, so a committed copy is stale as soon as a dependency moves —
+# `.github/workflows/sbom.yml` uploads it as a build artefact instead.
+/sbom/
+
 # Rebase runtime outputs — never commit run artefacts.
 /runs/
 /population-candidate.json
