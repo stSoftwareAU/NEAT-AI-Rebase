@@ -245,6 +245,28 @@ fn semgrep_gates_milestone_pull_requests() {
 }
 
 #[test]
+fn sbom_covers_milestone_pull_requests() {
+    let filter = workflow_filter("sbom.yml");
+    for branch in ["milestone/rebase-v1", "milestone/producer-wiring"] {
+        assert!(
+            matches_any(&filter, branch),
+            "sbom.yml filter {filter:?} does not refresh the SBOM for PRs into {branch}"
+        );
+    }
+}
+
+#[test]
+fn sbom_still_covers_unnested_branches() {
+    let filter = workflow_filter("sbom.yml");
+    for branch in ["Develop", "main", "issue-96-fix"] {
+        assert!(
+            matches_any(&filter, branch),
+            "sbom.yml filter {filter:?} stopped covering PRs into {branch}"
+        );
+    }
+}
+
+#[test]
 fn semgrep_still_gates_unnested_branches() {
     let filter = workflow_filter("semgrep.yml");
     for branch in ["Develop", "main", "issue-63-fix"] {

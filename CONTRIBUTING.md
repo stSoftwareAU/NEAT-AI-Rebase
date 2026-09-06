@@ -89,6 +89,20 @@ CI adds five gates `quality.sh` cannot run locally:
   run" instead of leaving a red tick nobody is paged for (Issue #94). Who
   triages it, and how fast, is the "Internal escalation" section of
   `SECURITY.md`; `rebase/tests/security_alerting.rs` holds both halves.
+* `.github/workflows/sbom.yml` publishes a CycloneDX bill of materials for the
+  crate on every PR **and** at 07:00 UTC every Monday, uploading it as the
+  `sbom-<sha>` build artefact so a downstream consumer of this public
+  repository has a machine-readable dependency manifest without resolving one
+  by hand (Issue #96). The SBOM is deliberately not committed: it is derived
+  from `Cargo.lock` and `cargo metadata`, so a checked-in copy is stale the
+  moment a dependency moves. Reproduce it with
+  `cargo install cargo-cyclonedx --version 0.5.9 && ./scripts/generate-sbom.sh`
+  — that is the same script the workflow runs, and it needs the
+  `../NEAT-AI-core` sibling, because `cargo cyclonedx` resolves the workspace
+  through `cargo metadata`. It writes `sbom/<package-directory>.cdx.json` and
+  exits non-zero when nothing was produced or what was produced is not a
+  CycloneDX document naming cargo components; `rebase/tests/sbom_gate.rs` drives
+  every one of those paths.
 
 Every workflow that triggers on `pull_request` declares a `concurrency:` group
 keyed by `${{ github.ref }}` with `cancel-in-progress: true`, so pushing again
