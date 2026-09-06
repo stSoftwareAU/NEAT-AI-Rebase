@@ -180,6 +180,13 @@ a publish date — an unreachable crates.io is never reconciled as a pass.
 Internal `stSoftwareAU` crates are exempt via `--exempt`; none are consumed
 from crates.io today, since `neat-core` is a `path` dependency.
 
+The weekly slot and that 24-hour window are the routine cadence, not a law: an
+advisory under active exploitation needs a same-day bump, and the emergency
+override in `SECURITY.md` is the documented way to take one (Issue #95). It
+dispatches this same workflow by hand, says how to take the quarantine
+exception on a single bump rather than by widening the window, and holds the
+PR gates — none of them are waived to go faster.
+
 `.github/dependabot.yml` registers the cargo ecosystem with Dependabot on the
 same weekly slot (Issue #93). It is the committed anchor for the *alerting*
 channel — GitHub's own advisory feed, surfaced on the repository's Security tab
