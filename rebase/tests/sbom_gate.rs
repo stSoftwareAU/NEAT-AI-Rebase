@@ -89,8 +89,11 @@ fn workspace(dir: &Path) -> PathBuf {
 /// Write an executable stub `cargo` whose body is `body`, and return its path.
 fn stub_cargo(dir: &Path, body: &str) -> PathBuf {
     let path = dir.join("stub-cargo");
-    fs::write(&path, format!("#!/usr/bin/env bash\nset -euo pipefail\n{body}"))
-        .expect("write the stub generator");
+    fs::write(
+        &path,
+        format!("#!/usr/bin/env bash\nset -euo pipefail\n{body}"),
+    )
+    .expect("write the stub generator");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -104,7 +107,9 @@ fn stub_cargo(dir: &Path, body: &str) -> PathBuf {
 fn stub_writing(dir: &Path, payload: &str) -> PathBuf {
     stub_cargo(
         dir,
-        &format!("{STUB_PREAMBLE}cat > \"$workspace/rebase/$filename.json\" <<'SBOM'\n{payload}\nSBOM\n"),
+        &format!(
+            "{STUB_PREAMBLE}cat > \"$workspace/rebase/$filename.json\" <<'SBOM'\n{payload}\nSBOM\n"
+        ),
     )
 }
 
