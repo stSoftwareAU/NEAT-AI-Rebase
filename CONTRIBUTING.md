@@ -161,3 +161,17 @@ It exits 0 when clear, 1 on a quarantined version and 2 when it could not read
 a publish date — an unreachable crates.io is never reconciled as a pass.
 Internal `stSoftwareAU` crates are exempt via `--exempt`; none are consumed
 from crates.io today, since `neat-core` is a `path` dependency.
+
+`.github/dependabot.yml` registers the cargo ecosystem with Dependabot on the
+same weekly slot (Issue #93). It is the committed anchor for the *alerting*
+channel — GitHub's own advisory feed, surfaced on the repository's Security tab
+— which `cargo-audit.yml` cannot give you: that job scans `Cargo.lock` against
+RustSec and reports in a CI log. Whether alerts are enabled is a repository
+setting no file can prove, so the configuration is the only signal a reviewer
+can read from the tree. It deliberately sets `open-pull-requests-limit: 0`:
+`cargo-upgrade.yml` is the single bump path because it is the one that applies
+the 24-hour publish-age quarantine, and a second weekly bumper without that
+window would propose exactly the release the gate holds back. Dependabot
+security updates are a separate repository switch and are not governed by that
+limit. `rebase/tests/dependabot_config.rs` holds both halves, so the
+configuration cannot be dropped or quietly turned into a competing bumper.
