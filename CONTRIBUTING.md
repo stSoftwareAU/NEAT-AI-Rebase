@@ -84,7 +84,11 @@ CI adds five gates `quality.sh` cannot run locally:
   sibling. Upgrade past the advisory; if it genuinely cannot be fixed, ignore
   that one ID in `.cargo/audit.toml` (cargo-audit does not read `deny.toml`),
   add the same ID to `deny.toml` so both gates agree, and say why in the PR
-  description.
+  description. A failed *scheduled* run has no PR to fail, so its `notify` job
+  opens — or comments on — an issue titled "cargo audit failed on the scheduled
+  run" instead of leaving a red tick nobody is paged for (Issue #94). Who
+  triages it, and how fast, is the "Internal escalation" section of
+  `SECURITY.md`; `rebase/tests/security_alerting.rs` holds both halves.
 
 Every workflow that triggers on `pull_request` declares a `concurrency:` group
 keyed by `${{ github.ref }}` with `cancel-in-progress: true`, so pushing again
