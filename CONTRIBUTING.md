@@ -84,7 +84,25 @@ CI adds five gates `quality.sh` cannot run locally:
   sibling. Upgrade past the advisory; if it genuinely cannot be fixed, ignore
   that one ID in `.cargo/audit.toml` (cargo-audit does not read `deny.toml`),
   add the same ID to `deny.toml` so both gates agree, and say why in the PR
-  description.
+  description. A failed *scheduled* run has no PR to fail, so its `notify` job
+  opens — or comments on — an issue titled "cargo audit failed on the scheduled
+  run" instead of leaving a red tick nobody is paged for (Issue #94). Who
+  triages it, and how fast, is the "Internal escalation" section of
+  `SECURITY.md`; `rebase/tests/security_alerting.rs` holds both halves.
+* `.github/workflows/sbom.yml` publishes a CycloneDX bill of materials for the
+  crate on every PR **and** at 07:00 UTC every Monday, uploading it as the
+  `sbom-<sha>` build artefact so a downstream consumer of this public
+  repository has a machine-readable dependency manifest without resolving one
+  by hand (Issue #96). The SBOM is deliberately not committed: it is derived
+  from `Cargo.lock` and `cargo metadata`, so a checked-in copy is stale the
+  moment a dependency moves. Reproduce it with
+  `cargo install cargo-cyclonedx --version 0.5.9 && ./scripts/generate-sbom.sh`
+  — that is the same script the workflow runs, and it needs the
+  `../NEAT-AI-core` sibling, because `cargo cyclonedx` resolves the workspace
+  through `cargo metadata`. It writes `sbom/<package-directory>.cdx.json` and
+  exits non-zero when nothing was produced or what was produced is not a
+  CycloneDX document naming cargo components; `rebase/tests/sbom_gate.rs` drives
+  every one of those paths.
 
 Every workflow that triggers on `pull_request` declares a `concurrency:` group
 keyed by `${{ github.ref }}` with `cancel-in-progress: true`, so pushing again
@@ -143,3 +161,45 @@ rewrites the `neat-core` path dependency, which cargo-edit reports as `local`.
 The scheduled run verifies its own bump with `cargo deny check` and the test
 suite before raising the PR, so a broken upgrade fails the run instead of
 arriving as a pull request.
+
+It also refuses to propose a crate version published in the last 24 hours.
+`scripts/crates-quarantine.sh` reads the `created_at` of every crates.io
+version the bump newly resolved and fails the run when one is younger than the
+window — `cargo deny check` judges advisories, not recency, so without it a
+compromised release could be proposed before anyone had a chance to flag it.
+Run it by hand the same way the workflow does:
+
+```bash
+git show HEAD:Cargo.lock > /tmp/Cargo.lock.baseline
+./scripts/crates-quarantine.sh \
+  --baseline-lockfile /tmp/Cargo.lock.baseline --lockfile Cargo.lock --hours 24
+```
+
+It exits 0 when clear, 1 on a quarantined version and 2 when it could not read
+a publish date — an unreachable crates.io is never reconciled as a pass.
+Internal `stSoftwareAU` crates are exempt via `--exempt`; none are consumed
+from crates.io today, since `neat-core` is a `path` dependency.
+
+The weekly slot and that 24-hour window are the routine cadence, not a law: an
+advisory under active exploitation needs a same-day bump, and the emergency
+override in `SECURITY.md` is the documented way to take one (Issue #95). It
+dispatches this same workflow by hand, says how to take the quarantine
+exception on a single bump rather than by widening the window, and holds the
+PR gates — none of them are waived to go faster.
+
+`.github/dependabot.yml` registers the cargo ecosystem with Dependabot on the
+same weekly slot (Issue #93). It is the committed anchor for the *alerting*
+channel — GitHub's own advisory feed, surfaced on the repository's Security tab
+— which `cargo-audit.yml` cannot give you: that job scans `Cargo.lock` against
+RustSec and reports in a CI log. Whether alerts are enabled is a repository
+setting no file can prove, so the configuration is the only signal a reviewer
+can read from the tree. It deliberately sets `open-pull-requests-limit: 0`:
+`cargo-upgrade.yml` is the single bump path because it is the one that applies
+the 24-hour publish-age quarantine, and a second weekly bumper without that
+window would propose exactly the release the gate holds back. It also sets
+`cooldown.default-days: 7` — Dependabot's own publish-age window, wider than
+the script's 24 hours — so the quarantine still holds should that limit ever be
+raised. Dependabot
+security updates are a separate repository switch and are not governed by that
+limit. `rebase/tests/dependabot_config.rs` holds both halves, so the
+configuration cannot be dropped or quietly turned into a competing bumper.

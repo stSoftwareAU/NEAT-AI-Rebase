@@ -13,6 +13,11 @@
 # commit SHAs, matching `ci.yml`, `dependency-review.yml` and `markdown-lint.yml`,
 # so a hijacked tag cannot execute here, and `contents: read` is the whole
 # permission set: the job reads the checkout and writes nothing back.
+#
+# A scheduled failure is routed to a human by the `notify` job below
+# (Issue #94): the Monday run has no pull request and no author, so without it
+# a new advisory shows up only as a red tick on the Actions tab. `SECURITY.md`
+# names who triages the issue it opens.
 name: Cargo Audit
 
 on:
@@ -76,3 +81,53 @@ jobs:
       # gates agree. No such exception exists today.
       - name: cargo audit
         run: cargo audit
+
+  # Failure routing (Issue #94). Nobody is watching the 06:00 UTC Monday run,
+  # so a red `audit` job needs to arrive somewhere a maintainer is notified —
+  # an issue does that, and it stays open until someone triages it.
+  #
+  # `pull_request` failures are deliberately excluded: those already block the
+  # merge in front of the author, and filing an issue for each one would train
+  # maintainers to ignore the channel. The job never checks the repository out,
+  # so `issues: write` is the whole permission set and the `audit` job above
+  # keeps its read-only token.
+  notify:
+    name: Report audit failure
+    needs: audit
+    if: failure() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+
+    steps:
+      # Every workflow value arrives through `env:` rather than being
+      # interpolated into the script, so nothing GitHub supplies can be read as
+      # shell. `set -euo pipefail` makes a failed `gh` call fail this job: a
+      # notification that dies quietly is worse than no notification at all.
+      - name: Open or update the audit triage issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          title="cargo audit failed on the scheduled run"
+          # Plain prose, no backticks: a Markdown code span in single quotes
+          # reads as a command substitution to shellcheck (SC2016).
+          body="$(printf '%s\n\n%s\n\n%s\n' \
+            "cargo audit failed against the committed Cargo.lock — a RustSec advisory now affects a locked dependency, or the audit itself could not run." \
+            "Run: $RUN_URL" \
+            "Triage owner and the response this expects: see the Internal escalation section of SECURITY.md.")"
+
+          # One issue per outage, not one per Monday: while it is open the
+          # weekly result is appended as a comment instead.
+          existing="$(gh issue list --state open --search "\"$title\" in:title" \
+            --json number --jq '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

@@ -1,0 +1,47 @@
+# Dependabot configuration for NEAT-AI-Rebase (Issue #93).
+#
+# `.github/workflows/cargo-audit.yml` audits the committed `Cargo.lock` against
+# the RustSec advisory database on every pull request and every Monday. That is
+# the scanning half of the supply-chain check. Dependabot's advisory feed is the
+# other half: an independent channel, fed by GitHub's own ingestion, that
+# surfaces on the repository's Security tab rather than only in a CI job log.
+# Whether alerts are switched on is a repository setting no file can prove, so
+# this configuration is the anchor available in the tree — it registers the
+# cargo ecosystem with Dependabot and states, reviewably, that the channel is
+# meant to be wired up. `rebase/tests/dependabot_config.rs` holds this.
+#
+# What it deliberately does not do is open version-update pull requests.
+# `.github/workflows/cargo-upgrade.yml` is this repository's single bump path,
+# and it runs `scripts/crates-quarantine.sh` over every crates.io version the
+# bump newly resolves, refusing anything published in the last 24 hours
+# (Issue #91). A second weekly bumper would propose exactly the release that
+# gate exists to hold back, so the cargo entry pins
+# `open-pull-requests-limit: 0` *and* sets a `cooldown` of 7 days, Dependabot's
+# own publish-age window, so the quarantine still holds if the limit is ever
+# raised. Dependabot *security* updates are governed by
+# the repository's own security-updates setting, not by this limit — the two are
+# separate switches, which is why disabling version updates here does not
+# disable the alerting this file is committed for.
+version: 2
+
+updates:
+  - package-ecosystem: "cargo"
+    # The workspace manifest is at the repository root; `rebase/Cargo.toml` is a
+    # workspace member and is covered by the same resolution.
+    directory: "/"
+    schedule:
+      # 06:00 UTC every Monday, the slot `cargo-audit.yml` and
+      # `cargo-upgrade.yml` already share, so the week's dependency news arrives
+      # together.
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    # Hold back versions published in the last 7 days — Dependabot's own
+    # publish-age window, wider than the 24 hours `scripts/crates-quarantine.sh`
+    # enforces. It binds only when version updates are on, so it is the standing
+    # guard should `open-pull-requests-limit` ever be raised.
+    cooldown:
+      default-days: 7
+    # Version updates stay with the quarantined workflow — see the note above.
+    open-pull-requests-limit: 0

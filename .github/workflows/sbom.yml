@@ -1,0 +1,102 @@
+# CycloneDX SBOM publication for NEAT-AI-Rebase (Issue #96).
+#
+# `rebase/Cargo.toml` builds a binary crate in a public repository, and nothing
+# in the tree told a downstream consumer what that binary is built from: no
+# SBOM was committed and no workflow produced one, so the dependency graph had
+# to be resolved by hand from `Cargo.lock`. This job runs
+# `scripts/generate-sbom.sh` — the same script a maintainer runs locally, so
+# the gate and the workflow cannot drift — and uploads what it wrote as a build
+# artefact.
+#
+# The SBOM is deliberately *not* committed: it is derived from `Cargo.lock` and
+# `cargo metadata`, so a checked-in copy is stale the moment a dependency moves
+# and a reviewer cannot tell a stale one from a current one. The artefact is
+# regenerated on every pull request and weekly on the schedule instead.
+#
+# `cargo cyclonedx` resolves the workspace through `cargo metadata`, so the
+# `../NEAT-AI-core` sibling `ci.yml` needs is required here too — without it
+# the `neat-core` path dependency does not resolve and no SBOM is produced.
+#
+# Third-party actions are pinned to 40-character commit SHAs, matching
+# `ci.yml`, `cargo-audit.yml` and `semgrep.yml`, so a hijacked tag cannot
+# execute here, and `contents: read` is the whole permission set: the job reads
+# the checkout and writes nothing back. Unlike `cargo-audit.yml`, the scheduled
+# run needs no failure-routing job of its own — the same job runs on every pull
+# request, so a break arrives in front of an author rather than waiting for
+# Monday. `rebase/tests/sbom_gate.rs` holds all of this.
+name: SBOM
+
+on:
+  pull_request:
+    # `*` stops at a `/`, so it matches `Develop` but never
+    # `milestone/<slug>` — the shared branch milestone sub-issue PRs target.
+    # `milestone/*` is listed explicitly so those PRs refresh the SBOM as they
+    # merge, rather than only when the rollup PR reaches the default branch.
+    # `rebase/tests/workflow_branch_filters.rs` holds this.
+    branches: ["*", "milestone/*"]
+  schedule:
+    # 07:00 UTC every Monday — an hour after `cargo-audit.yml`, so the weekly
+    # SBOM describes the dependency set that audit has just judged.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Matches `ci.yml`, `cargo-audit.yml` and `semgrep.yml` (Issue #85): a
+# `synchronize` push cancels the superseded run rather than leaving it to
+# publish an artefact for a head nobody is reviewing.
+concurrency:
+  group: sbom-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  sbom:
+    name: CycloneDX SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # The job only reads the working tree — no fetch, no push — so no git
+      # credential needs to survive this step.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up NEAT-AI-core sibling (path dependency for neat-core)
+        uses: ./.github/actions/setup-neat-core
+
+      # Same pin and same version as `ci.yml` and `cargo-audit.yml`.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable, frozen 2026-05-18
+        with:
+          toolchain: "1.98.0"
+
+      # Prebuilt binary at an exact version, the way `ci.yml` installs
+      # cargo-deny and `cargo-audit.yml` installs cargo-audit: an unpinned
+      # version would let a future release change what this job emits without a
+      # diff.
+      - name: Install cargo-cyclonedx (prebuilt binary)
+        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2.81.10
+        with:
+          tool: cargo-cyclonedx@0.5.9
+
+      # Exits non-zero when no SBOM was produced, or when what was produced is
+      # not a CycloneDX document naming cargo components.
+      - name: Generate the SBOM
+        run: ./scripts/generate-sbom.sh
+
+      # `if-no-files-found: error` is the second half of the same guard: an
+      # upload with nothing to upload must fail the job, not publish an empty
+      # artefact that reads as a successful run.
+      - name: Upload the SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom/
+          if-no-files-found: error
+          retention-days: 90
