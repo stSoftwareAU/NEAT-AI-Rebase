@@ -34,6 +34,9 @@ if [[ "$SHELLCHECK_FAILED" -ne 0 ]]; then
 fi
 echo "shellcheck: all scripts passed"
 
+echo "Checking scripts/runlib.sh already-installed contract (Issue #108)..."
+./scripts/test-runlib.sh
+
 echo "Linting GitHub Actions workflows..."
 ./scripts/actionlint.sh
 

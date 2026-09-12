@@ -136,6 +136,9 @@ jobs:
           fi
           shellcheck --severity=warning "${scripts[@]}"
 
+      - name: Check scripts/runlib.sh already-installed contract
+        run: ./scripts/test-runlib.sh
+
   ci-required:
     name: CI Required Checks
     needs: [quality, shell-checks]
