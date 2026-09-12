@@ -9,4 +9,25 @@
 # 0.10.6 is the first version Rebase was written against: it keys synapse
 # uniqueness by (fromUUID, toUUID, type), which is what the Forest adapter's
 # `typed-pair` correction into an `IF` anchor emits.
-0.10.6
+#
+# 0.10.6 -> 0.18.0 (Issue #110): acknowledge the seven pre-1.0 minor bumps core
+# shipped while this gate went unexercised (Develop CI last ran 2026-08-29).
+# 0.11.0 (core #619) added the `prune_*` modules — additive. 0.12.0 (core #633)
+# made every `CompiledNetwork` field private behind accessors. 0.13.0 was the
+# security-scan roll-up. 0.14.0 (core #640) bounds a creature's declared
+# observation width (`validate_creature_width`, `CreatureError::TooManyNodes`).
+# 0.15.0 (core #653) added `NetworkError::InvalidInputCount`, breaking only an
+# exhaustive `match`. 0.16.0 / 0.17.0 widened the pruning bias-fold rule in
+# `prune_neuron` / `prune_synapse`. 0.18.0 (core #684, Ockham #201) drives the
+# pruning corner cases across the JSON / WASM boundary and adds
+# `impl From<&PruneResult> for PruneResponse` — additive. Rebase names none of
+# those items: it reaches
+# core through `CreatureExport` / `NeuronExport` / `SynapseExport`,
+# `parse_creature_json`, `creature_to_json*`, `creature_validate`,
+# `compile_creature` and `training_data::{TrainingDataConfig, find_bin_files}`,
+# all unchanged, so no Rebase source change was required. Verified against the
+# sibling clone at core Develop 0.18.0 (0e2b0d6): `cargo clippy --workspace
+# --all-targets --all-features -- -D warnings`, `cargo fmt --all -- --check`
+# and `cargo test --workspace --all-features` (158 lib tests + every
+# integration target) are green with no edit.
+0.18.0
