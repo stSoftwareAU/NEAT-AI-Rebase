@@ -92,6 +92,14 @@ One command runs everything CI runs:
 ./quality.sh
 ```
 
+Fleet hosts do not run `cargo build` on every run.
+[`scripts/runlib.sh`](./scripts/runlib.sh) (Issue #108) installs
+`~/.cargo/bin/neat_ai_rebase` and `.neat_ai_rebase.version`, prints that path on
+stdout, and removes `target/` after a successful install. A second run on the
+same crate version prints `[neat_ai_rebase] already installed v<x>` and runs no
+cargo command. It builds the `neat_ai_rebase` binary only. The byte-identical
+copy synced from NEAT-AI-core is a separate job (see the family-sync issue).
+
 Two examples build runnable fixtures without a real corpus or champion:
 `cargo run --example print_bundle` prints the documented enhancement JSON, and
 `cargo run --example make_fixture -- <dir>` writes a champion and a bundle for
