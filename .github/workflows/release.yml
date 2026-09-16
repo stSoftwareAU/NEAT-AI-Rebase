@@ -7,11 +7,12 @@
 # there is nothing to pin to.
 #
 # The job is idempotent by design: it reads the version out of
-# `rebase/Cargo.toml`, and does nothing at all when `v<version>` is already a
-# tag or already a release. Re-running it — or a second push that touches the
-# manifest without changing the version — is a no-op. When the version *is*
-# new, `gh release create` creates the tag and the release together, and any
-# failure fails the job: a release that could not be cut must never look green.
+# `rebase/Cargo.toml` and does nothing when `v<version>` is already released.
+# Re-running it — or a second push that touches the manifest without changing
+# the version — is a no-op. When the release is absent, `gh release create`
+# creates the tag and the release together, or reuses a tag a half-failed
+# earlier run left behind. Any failure fails the job and files a triage issue:
+# a release that could not be cut must never look green.
 #
 # `rebase/tests/version_release_workflows.rs` holds the trigger and the path.
 name: Release (semver tag)
@@ -67,18 +68,37 @@ jobs:
             echo "tag=${tag}"
           } >> "$GITHUB_OUTPUT"
 
-          # Tags are immutable identifiers; if this version was already
-          # released there is nothing to do. Idempotent across re-runs.
-          if git ls-remote --tags --exit-code origin "refs/tags/${tag}" >/dev/null 2>&1; then
-            echo "Tag ${tag} already exists — nothing to release."
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          # The release is what a consumer pins, so it — not the tag — decides
+          # whether there is work to do. Idempotent across re-runs.
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "Release ${tag} already exists — nothing to do."
             echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          # A tag with no release is a half-failed earlier run, not a finished
+          # one: the release below is still cut, reusing the existing tag. An
+          # `ls-remote` that could not answer must never read as "no tag" —
+          # `--exit-code` reports 2 for "ref absent", and anything else is a
+          # real failure that has to fail this job loudly.
+          errors="${RUNNER_TEMP}/ls-remote.err"
+          status=0
+          git ls-remote --tags --exit-code origin "refs/tags/${tag}" \
+            >/dev/null 2>"$errors" || status=$?
+          case "$status" in
+            0)
+              echo "Tag ${tag} exists but its release does not — completing the release."
+              echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+              ;;
+            2)
+              echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "git ls-remote failed (exit ${status}) — cannot tell whether ${tag} exists:" >&2
+              cat "$errors" >&2
+              exit 1
+              ;;
+          esac
           echo "release=true" >> "$GITHUB_OUTPUT"
 
       - name: Cut the tag and the release
@@ -86,10 +106,62 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.gate.outputs.tag }}
+          TAG_EXISTS: ${{ steps.gate.outputs.tag_exists }}
           VERSION: ${{ steps.gate.outputs.version }}
         run: |
           set -euo pipefail
-          gh release create "$TAG" \
-            --target "$GITHUB_SHA" \
-            --title "$TAG" \
-            --notes "Automated semver release for \`neat-ai-rebase\` ${VERSION}, cut from the version bump \`version-increment.yml\` required on the merged pull request. Consumers pin this repository by release tag."
+          notes="Automated semver release for neat-ai-rebase ${VERSION}, cut from the version bump version-increment.yml required on the merged pull request. Consumers pin this repository by release tag."
+          # `--target` names the commit the tag is created at, and is rejected
+          # as meaningless when the tag is already on the remote.
+          if [ "$TAG_EXISTS" = "true" ]; then
+            gh release create "$TAG" --title "$TAG" --notes "$notes"
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes "$notes"
+          fi
+
+  # Failure routing (Issue #94, the pattern `cargo-audit.yml` uses). This job
+  # runs on a push to `Develop`, so there is no PR and no author in front of a
+  # red result: a failed release would be a tick on the Actions tab nobody is
+  # paged for, while NEAT-AI-Forests waits for a tag that never arrived. The
+  # job never checks the repository out, so `issues: write` is the whole
+  # permission set.
+  notify:
+    name: Report release failure
+    needs: release
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+
+    steps:
+      # Every workflow value arrives through `env:` rather than being
+      # interpolated into the script, so nothing GitHub supplies can be read as
+      # shell. `set -euo pipefail` makes a failed `gh` call fail this job: a
+      # notification that dies quietly is worse than no notification at all.
+      - name: Open or update the release triage issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          title="semver release failed on the push to Develop"
+          # Plain prose, no backticks: a Markdown code span in single quotes
+          # reads as a command substitution to shellcheck (SC2016).
+          body="$(printf '%s\n\n%s\n\n%s\n' \
+            "The release job could not cut the tag or the GitHub release for the current crate version, so consumers have nothing new to pin." \
+            "Run: $RUN_URL" \
+            "Re-running the job is safe: it skips a version that is already released.")"
+
+          # One issue per outage, not one per push: while it is open the next
+          # failure is appended as a comment instead.
+          existing="$(gh issue list --state open --search "\"$title\" in:title" \
+            --json number --jq '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

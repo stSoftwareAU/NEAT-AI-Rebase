@@ -34,7 +34,7 @@ branch. Install the linter with
 [documented download](https://github.com/rhysd/actionlint/blob/main/docs/install.md);
 a missing `actionlint` fails the gate rather than skipping it.
 
-CI adds six gates `quality.sh` cannot run locally:
+CI adds seven gates `quality.sh` cannot run locally:
 
 * `.github/workflows/gitleaks.yml` scans the PR's commit range for committed
   secrets and fails the PR if it finds one. Every PR is scanned, including the

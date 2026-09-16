@@ -10,7 +10,9 @@
 //! against the events and paths the fleet really produces.
 //!
 //! The branch side of `version-increment.yml` lives in
-//! `workflow_branch_filters.rs`, which owns the branch-glob matcher.
+//! `workflow_branch_filters.rs`. Rust integration tests are separate crates,
+//! so the glob matcher and the YAML reader are local here, the way each of the
+//! repository's other workflow test files carries its own.
 
 use std::path::{Path, PathBuf};
 
@@ -62,43 +64,18 @@ fn unquote(entry: &str) -> String {
     entry.trim().trim_matches(['"', '\'']).to_string()
 }
 
-/// The top-level trigger names under a workflow's `on:` block.
-fn on_triggers(workflow: &str) -> Vec<String> {
-    let mut lines = workflow.lines().skip_while(|line| line.trim_end() != "on:");
-    lines.next().expect("workflow declares an `on:` block");
-
-    let mut triggers = Vec::new();
-    let mut trigger_indent = None;
-    for line in lines {
-        let trimmed = line.trim_start();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        let indent = line.len() - trimmed.len();
-        if indent == 0 {
-            break; // next top-level key — the `on:` block is finished.
-        }
-        let depth = *trigger_indent.get_or_insert(indent);
-        if indent == depth
-            && let Some(name) = trimmed.split_once(':').map(|(name, _)| name)
-        {
-            triggers.push(name.to_string());
-        }
-    }
-    triggers
-}
-
-/// The lines nested under `on: <trigger>:`, without the trigger line itself.
+/// The `on:` block, as `(trigger name, the lines nested under it)` pairs.
 ///
-/// Panics when the trigger is absent: a workflow that does not declare the
-/// trigger under test is a real failure, not a vacuous pass.
-fn trigger_block<'a>(workflow: &'a str, trigger: &str) -> Vec<&'a str> {
+/// Reads the mapping keys nested one level under `on:`, skipping blank lines
+/// and comments and stopping at the next top-level key. Panics when `on:` is
+/// absent: a workflow with no trigger block is a real failure, not a vacuous
+/// pass.
+fn trigger_sections(workflow: &str) -> Vec<(String, Vec<&str>)> {
     let mut lines = workflow.lines().skip_while(|line| line.trim_end() != "on:");
     lines.next().expect("workflow declares an `on:` block");
 
-    let mut block = Vec::new();
+    let mut sections: Vec<(String, Vec<&str>)> = Vec::new();
     let mut trigger_indent = None;
-    let mut inside = false;
     for line in lines {
         let trimmed = line.trim_start();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -110,18 +87,36 @@ fn trigger_block<'a>(workflow: &'a str, trigger: &str) -> Vec<&'a str> {
         }
         let depth = *trigger_indent.get_or_insert(indent);
         if indent == depth {
-            if inside {
-                break; // the next trigger starts here.
+            if let Some((name, _)) = trimmed.split_once(':') {
+                sections.push((name.to_string(), Vec::new()));
             }
-            inside = trimmed.split_once(':').map(|(name, _)| name) == Some(trigger);
             continue;
         }
-        if inside {
+        if let Some((_, block)) = sections.last_mut() {
             block.push(line);
         }
     }
-    assert!(inside, "workflow declares an `on: {trigger}:` trigger");
-    block
+    sections
+}
+
+/// The trigger names of a workflow's `on:` block.
+fn trigger_names(workflow: &str) -> Vec<String> {
+    trigger_sections(workflow)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect()
+}
+
+/// The lines nested under `on: <trigger>:`, without the trigger line itself.
+///
+/// Panics when the trigger is absent: a workflow that does not declare the
+/// trigger under test is a real failure, not a vacuous pass.
+fn trigger_block<'a>(workflow: &'a str, trigger: &str) -> Vec<&'a str> {
+    trigger_sections(workflow)
+        .into_iter()
+        .find(|(name, _)| name == trigger)
+        .unwrap_or_else(|| panic!("workflow declares an `on: {trigger}:` trigger"))
+        .1
 }
 
 /// The `<key>:` list inside a trigger block, in either the flow form
@@ -193,7 +188,7 @@ fn trigger_block_isolates_one_trigger() {
         "  bump:\n",
         "    branches: [not-a-trigger-list]\n",
     );
-    assert_eq!(on_triggers(workflow), vec!["pull_request", "push"]);
+    assert_eq!(trigger_names(workflow), vec!["pull_request", "push"]);
     assert_eq!(
         trigger_list(&trigger_block(workflow, "pull_request"), "branches"),
         vec!["Develop"]
@@ -225,7 +220,7 @@ fn trigger_list_reads_a_commented_block_list() {
 
 #[test]
 fn version_increment_runs_on_pull_requests_not_pushes() {
-    let triggers = on_triggers(&workflow_text("version-increment.yml"));
+    let triggers = trigger_names(&workflow_text("version-increment.yml"));
     assert!(
         triggers.iter().any(|trigger| trigger == "pull_request"),
         "version-increment.yml triggers {triggers:?} lost `pull_request` — the \
@@ -274,7 +269,7 @@ fn version_increment_ignores_changes_that_need_no_bump() {
 
 #[test]
 fn release_cuts_tags_on_pushes_to_develop() {
-    let triggers = on_triggers(&workflow_text("release.yml"));
+    let triggers = trigger_names(&workflow_text("release.yml"));
     assert!(
         triggers.iter().any(|trigger| trigger == "push"),
         "release.yml triggers {triggers:?} lost `push` — no bump would ever be \
