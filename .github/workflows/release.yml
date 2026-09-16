@@ -1,0 +1,95 @@
+# Cut a `v<semver>` tag and a GitHub release whenever the crate version changes
+# on `Develop` (Issue #106).
+#
+# `version-increment.yml` guarantees every merged change carries a new version;
+# this job turns that version into something a consumer can pin. NEAT-AI-Forests
+# depends on `neat-ai-rebase` by release, not by commit SHA, so without a tag
+# there is nothing to pin to.
+#
+# The job is idempotent by design: it reads the version out of
+# `rebase/Cargo.toml`, and does nothing at all when `v<version>` is already a
+# tag or already a release. Re-running it — or a second push that touches the
+# manifest without changing the version — is a no-op. When the version *is*
+# new, `gh release create` creates the tag and the release together, and any
+# failure fails the job: a release that could not be cut must never look green.
+#
+# `rebase/tests/version_release_workflows.rs` holds the trigger and the path.
+name: Release (semver tag)
+
+on:
+  push:
+    branches: [Develop]
+    # Only the manifest: the version is what marks a release, and gating on
+    # source or the lockfile would re-run this job for pushes that cannot
+    # possibly have produced a new version.
+    paths:
+      - "rebase/Cargo.toml"
+
+permissions:
+  contents: read
+
+concurrency:
+  # `cancel-in-progress` stays false: a run must never be killed between
+  # creating the tag and publishing the release.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Tag and release on version bump
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # push the tag and create the release
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # `gh` authenticates from GH_TOKEN in the environment and the only
+          # git operation is `ls-remote` against this public repository, so a
+          # persisted token would be pure blast radius.
+          persist-credentials: false
+
+      - name: Decide whether this version needs a release
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Same reader the bump gate uses, so a malformed version fails here
+          # rather than producing a nonsense tag.
+          version="$(./scripts/auto-version.sh --print rebase/Cargo.toml)"
+          tag="v${version}"
+          echo "Crate version: ${version} (tag ${tag})"
+          {
+            echo "version=${version}"
+            echo "tag=${tag}"
+          } >> "$GITHUB_OUTPUT"
+
+          # Tags are immutable identifiers; if this version was already
+          # released there is nothing to do. Idempotent across re-runs.
+          if git ls-remote --tags --exit-code origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists — nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists — nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
+      - name: Cut the tag and the release
+        if: steps.gate.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.gate.outputs.tag }}
+          VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes "Automated semver release for \`neat-ai-rebase\` ${VERSION}, cut from the version bump \`version-increment.yml\` required on the merged pull request. Consumers pin this repository by release tag."

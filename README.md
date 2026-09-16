@@ -421,6 +421,41 @@ applications belong outside these public libraries. Rebase carries no
 domain-specific dependencies or terminology, and its enhancement payloads
 describe indices and UUIDs rather than anything about a particular problem.
 
+## Versioning and releases
+
+The fleet rebuilds a binary only when the crate version changes, so a merged
+change that left `rebase/Cargo.toml` alone would never reach the unattended
+machines. `.github/workflows/version-increment.yml` closes that gap: on every
+pull request into `Develop` or a `milestone/<slug>` branch that touches
+`rebase/src/**`, `rebase/Cargo.toml`, `Cargo.lock`, `scripts/auto-version.sh`
+or the workflow itself, it runs `scripts/auto-version.sh` against the version on
+the branch the PR targets. A version level with the base gets a patch bump
+committed straight back onto the PR branch; a version already ahead is left
+alone, so re-running the job is a no-op; a version *behind* the base fails the
+job, because a downgrade reuses a version the machines have already built and
+the new binary would never install. Once that bump merges,
+`.github/workflows/release.yml` fires on the push to `Develop`, reads the
+version out of `rebase/Cargo.toml` and cuts tag `v<version>` with a matching
+GitHub release — skipping silently when the tag or release already exists — so
+[NEAT-AI-Forests](https://github.com/stSoftwareAU/NEAT-AI-Forests) can pin
+`neat-ai-rebase` to a release rather than to a commit SHA.
+`rebase/tests/auto_version.rs` drives the bump script itself, and
+`rebase/tests/version_release_workflows.rs` holds both workflows' triggers and
+path filters.
+
+```mermaid
+flowchart LR
+    A[PR touches gated paths] --> B{version vs base}
+    B -- level --> C[patch bump pushed to PR branch]
+    B -- ahead --> D[no-op]
+    B -- behind --> E[job fails: downgrade]
+    C --> F[merge to Develop]
+    D --> F
+    F --> G{tag v-version exists?}
+    G -- no --> H[cut tag + GitHub release]
+    G -- yes --> I[no-op]
+```
+
 ## Pinned Rust toolchain
 
 `rust-toolchain.toml` pins the channel so `rustup` resolves the same

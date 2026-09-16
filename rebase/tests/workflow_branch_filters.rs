@@ -276,3 +276,24 @@ fn semgrep_still_gates_unnested_branches() {
         );
     }
 }
+
+#[test]
+fn version_increment_gates_milestone_pull_requests() {
+    let filter = workflow_filter("version-increment.yml");
+    for branch in ["milestone/rebase-v1", "milestone/producer-wiring"] {
+        assert!(
+            matches_any(&filter, branch),
+            "version-increment.yml filter {filter:?} does not bump the version for PRs into \
+             {branch}"
+        );
+    }
+}
+
+#[test]
+fn version_increment_still_gates_develop() {
+    let filter = workflow_filter("version-increment.yml");
+    assert!(
+        matches_any(&filter, "Develop"),
+        "version-increment.yml filter {filter:?} stopped bumping the version for PRs into Develop"
+    );
+}
