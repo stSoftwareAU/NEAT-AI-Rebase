@@ -74,14 +74,13 @@ jobs:
       - name: Bump the crate version when this PR has not already
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
-          PUSH_TOKEN: ${{ secrets.ACTIONS_PUSH || secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          remote="https://x-access-token:${PUSH_TOKEN}@github.com/${REPOSITORY}.git"
-          # A swallowed fetch would leave the comparison reading against
-          # nothing and look like a pass, so let the failure out.
-          git fetch --no-tags "$remote" \
+          # Reading the base branch needs no credential on a public repository,
+          # so only the push below carries the token. A swallowed fetch would
+          # leave the comparison reading against nothing and look like a pass,
+          # so let the failure out.
+          git fetch --no-tags origin \
             "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
           if git cat-file -e "origin/${BASE_REF}:rebase/Cargo.toml" 2>/dev/null; then
             git show "origin/${BASE_REF}:rebase/Cargo.toml" > "${RUNNER_TEMP}/base-Cargo.toml"

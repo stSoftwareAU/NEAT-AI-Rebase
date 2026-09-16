@@ -34,7 +34,7 @@ branch. Install the linter with
 [documented download](https://github.com/rhysd/actionlint/blob/main/docs/install.md);
 a missing `actionlint` fails the gate rather than skipping it.
 
-CI adds five gates `quality.sh` cannot run locally:
+CI adds six gates `quality.sh` cannot run locally:
 
 * `.github/workflows/gitleaks.yml` scans the PR's commit range for committed
   secrets and fails the PR if it finds one. Every PR is scanned, including the
@@ -103,6 +103,19 @@ CI adds five gates `quality.sh` cannot run locally:
   exits non-zero when nothing was produced or what was produced is not a
   CycloneDX document naming cargo components; `rebase/tests/sbom_gate.rs` drives
   every one of those paths.
+* `.github/workflows/version-increment.yml` runs `scripts/auto-version.sh` on
+  every PR that touches `rebase/src/**`, `rebase/Cargo.toml`, `Cargo.lock`, the
+  bump script or the workflow itself, and commits the patch bump back onto the
+  PR branch when the version is still level with the base branch (Issue #106).
+  A version already ahead is left alone; a version *behind* the base fails the
+  job, because the fleet rebuilds off the crate version and a downgrade reuses
+  a version it has already built. Reproduce the decision locally with
+  `./scripts/auto-version.sh rebase/Cargo.toml <base-version> Cargo.lock`.
+  `.github/workflows/release.yml` is the other half and runs after the merge,
+  not on the PR: a push to `Develop` touching `rebase/Cargo.toml` cuts tag
+  `v<version>` and a GitHub release when neither exists yet, so a re-run is a
+  no-op. `rebase/tests/auto_version.rs` and
+  `rebase/tests/version_release_workflows.rs` hold both halves.
 
 Every workflow that triggers on `pull_request` declares a `concurrency:` group
 keyed by `${{ github.ref }}` with `cancel-in-progress: true`, so pushing again
