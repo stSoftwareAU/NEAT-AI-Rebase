@@ -30,4 +30,22 @@
 # --all-targets --all-features -- -D warnings`, `cargo fmt --all -- --check`
 # and `cargo test --workspace --all-features` (158 lib tests + every
 # integration target) are green with no edit.
-0.18.0
+#
+# 0.18.0 -> 0.22.4 (PR #112): the weekly cargo-upgrade lockfile bump met core
+# at 0.20.0 and tripped this gate; core Develop had reached 0.22.4 by the time
+# it was handled, so the baseline moves to what CI checks out. Four pre-1.0
+# minor bumps, per core's RELEASING.md. 0.19.0 (core #682) adds
+# `CreatureError::UnknownTargetUuid` and makes `compile_creature` refuse a
+# synapse whose `toUUID` names no listed neuron instead of dropping it.
+# Rebase does not match on `CreatureError`, and `validate_creature` runs
+# `creature_validate` before `compile_creature`, which already refuses a
+# dangling endpoint as a topology error, so the new refusal is never the one
+# that speaks. 0.20.0 (core #680) and 0.21.0 (core #698) are recorded by core
+# as no public-API or behaviour change. 0.22.0 (core #688) makes the prune
+# entry points splice out `IDENTITY` pass-throughs and adds a field to
+# `CleanupOptions`, `CleanupOutcome`, `PruneResult` and `PruneResponse`;
+# Rebase constructs none of those and calls no prune entry point, so neither
+# count reaches it. Verified against the sibling clone at core Develop 0.22.4
+# (4f999a0): clippy, fmt and `cargo test --workspace --all-features` (158 lib
+# tests + every integration target) are green with no source change.
+0.22.4
