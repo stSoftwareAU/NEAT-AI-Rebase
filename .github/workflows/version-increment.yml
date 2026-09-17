@@ -35,7 +35,9 @@
 # read "already ahead" for every later sub-issue PR.
 #
 # `rebase/tests/version_release_workflows.rs` holds the trigger and the path
-# list; `rebase/tests/workflow_branch_filters.rs` holds the branch filter.
+# list; `rebase/tests/workflow_branch_filters.rs` holds the branch filter;
+# `rebase/tests/family_sync.rs` holds the family-sync order and what the
+# commit stages.
 name: Version Increment
 
 on:
@@ -168,11 +170,14 @@ jobs:
       # pin and the bump — so a moved pin can never reach the PR at an
       # unchanged crate version.
       #
-      # `ACTIONS_PUSH` is an org-level token; with only the default
-      # `GITHUB_TOKEN`, GitHub suppresses the workflow runs a pushed commit
-      # would otherwise start (the caveat `cargo-upgrade.yml` documents), so the
-      # commit becomes the PR head with no run of its own. The next push to the
-      # PR gates it.
+      # `ACTIONS_PUSH` is an org-level token and matters more here than it did
+      # when this commit only moved two version strings: it now also carries a
+      # moved `neat-core` release pin and two replaced helper scripts. With only
+      # the default `GITHUB_TOKEN`, GitHub suppresses the workflow runs a pushed
+      # commit would otherwise start (the caveat `cargo-upgrade.yml` documents),
+      # so the commit becomes the PR head with no run of its own and the next
+      # push to the PR is what builds the moved pin. Configure `ACTIONS_PUSH` to
+      # have `ci.yml` gate the adopting commit itself.
       - name: Commit and push the sync and the bump
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}

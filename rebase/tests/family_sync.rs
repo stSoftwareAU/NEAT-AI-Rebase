@@ -118,30 +118,71 @@ fn cargo_lock_resolves_the_pinned_tag() {
     );
 }
 
+/// Position of the step whose body carries `command`, counted in declared
+/// steps. Comment lines are skipped, so the prose at the top of a workflow —
+/// which names every command the job runs — can never stand in for the step
+/// that runs it.
+fn step_running(workflow: &str, command: &str) -> Option<usize> {
+    let mut step = 0usize;
+    let mut seen_a_step = false;
+    for line in workflow.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        if trimmed.starts_with("- name:") {
+            if seen_a_step {
+                step += 1;
+            }
+            seen_a_step = true;
+        }
+        if seen_a_step && trimmed.contains(command) {
+            return Some(step);
+        }
+    }
+    None
+}
+
+#[test]
+fn step_running_ignores_the_header_prose() {
+    let workflow = concat!(
+        "# This job runs ./scripts/family-pins.sh before the bump.\n",
+        "jobs:\n",
+        "  bump:\n",
+        "    steps:\n",
+        "      - name: Bump\n",
+        "        run: ./scripts/auto-version.sh manifest\n",
+        "      - name: Move the pin\n",
+        "        run: ./scripts/family-pins.sh\n",
+    );
+    assert_eq!(step_running(workflow, "./scripts/auto-version.sh"), Some(0));
+    assert_eq!(step_running(workflow, "./scripts/family-pins.sh"), Some(1));
+    assert_eq!(step_running(workflow, "./scripts/absent.sh"), None);
+}
+
 #[test]
 fn version_increment_syncs_the_helpers_before_it_bumps() {
     let workflow = read(".github/workflows/version-increment.yml");
-    let sync = workflow
-        .find("scripts/family-pins.sh")
-        .expect("version-increment.yml runs scripts/family-pins.sh");
-    let bump = workflow
-        .find("./scripts/auto-version.sh rebase/Cargo.toml")
-        .expect("version-increment.yml runs the bump");
+    let fetch = step_running(&workflow, "NEAT-AI-core/Develop/scripts/runlib.sh")
+        .expect("version-increment.yml has a step fetching core's runlib.sh");
+    let fetch_pins = step_running(&workflow, "NEAT-AI-core/Develop/scripts/family-pins.sh")
+        .expect("version-increment.yml has a step fetching core's family-pins.sh");
+    let sync = step_running(&workflow, "./scripts/family-pins.sh")
+        .expect("version-increment.yml has a step running ./scripts/family-pins.sh");
+    let bump = step_running(&workflow, "./scripts/auto-version.sh rebase/Cargo.toml")
+        .expect("version-increment.yml has a step running the bump");
+    assert!(
+        fetch <= sync && fetch_pins <= sync,
+        "version-increment.yml refreshes the copies (steps {fetch}/{fetch_pins}) \
+         after running the pin mover (step {sync}) — the PR would move its pin \
+         with a stale copy of the script"
+    );
     assert!(
         sync < bump,
-        "version-increment.yml moves the neat-core pin after the bump — the \
-         moved pin would land at an unchanged crate version"
+        "version-increment.yml moves the neat-core pin (step {sync}) after the \
+         bump (step {bump}) — the moved pin would land at an unchanged crate \
+         version"
     );
-    for canonical in [
-        "NEAT-AI-core/Develop/scripts/runlib.sh",
-        "NEAT-AI-core/Develop/scripts/family-pins.sh",
-    ] {
-        assert!(
-            workflow.contains(canonical),
-            "version-increment.yml does not fetch {canonical} — a downstream \
-             edit to the copy would survive the PR"
-        );
-    }
 }
 
 #[test]

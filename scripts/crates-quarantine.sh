@@ -13,8 +13,10 @@
 # Mechanism:
 #   * Read `[[package]]` entries out of the refreshed `Cargo.lock`, keeping
 #     only those resolved from a registry source. `path` dependencies and
-#     `git` dependencies (`neat-core`) carry no crates.io publish date and
-#     are reported as skipped, never silently passed.
+#     `git` dependencies (`neat-core`) carry no crates.io publish date, so this
+#     gate cannot judge them and does not: `neat-core` is an internal
+#     `stSoftwareAU` dependency, which carries no quarantine, and its pin moves
+#     through `scripts/family-pins.sh` rather than through `cargo upgrade`.
 #   * Subtract the name+version pairs the baseline lockfile already had, so a
 #     dependency the bump did not move is not re-judged every week.
 #   * Ask crates.io for each remaining version's `created_at` and fail when the
@@ -156,7 +158,8 @@ to_epoch() {
 
 # `name version` for every package resolved from a registry, one per line.
 # Packages with no `source` are `path` dependencies; `git+` sources carry no
-# crates.io publish date. Both are reported separately by the caller.
+# crates.io publish date. Neither is a crates.io version, so neither is in this
+# gate's scope — see the header for why `neat-core` needs no quarantine.
 registry_packages() {
   awk '
     /^\[\[package\]\]/ { name = ""; version = ""; source = ""; next }

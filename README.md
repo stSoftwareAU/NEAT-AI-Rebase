@@ -70,8 +70,8 @@ needed to build it — and invokes the
 (`rust_scorer`) as the judge:
 
 ```toml
-# rebase/Cargo.toml
-neat-core = { git = "https://github.com/stSoftwareAU/NEAT-AI-core", tag = "v0.22.5" }
+# rebase/Cargo.toml — the tag is whatever core's newest release is; CI moves it
+neat-core = { git = "https://github.com/stSoftwareAU/NEAT-AI-core", tag = "v<latest>" }
 ```
 
 ```text
@@ -85,8 +85,11 @@ The pin moves only through this repository's own pull requests:
 newest release and re-locks `Cargo.lock`, and
 [`.github/workflows/version-increment.yml`](./.github/workflows/version-increment.yml)
 runs it on every gated PR so the moved pin and the crate-version bump land in
-one commit. A breaking core release therefore fails that PR's CI build rather
-than arriving unannounced.
+one commit. A breaking core release therefore surfaces as a red CI build on the
+PR that adopts it, rather than arriving unannounced — provided the sync commit
+itself is built: GitHub suppresses workflow runs for a commit pushed with the
+default `GITHUB_TOKEN`, so `ACTIONS_PUSH` must be configured for that commit to
+be gated by its own run rather than by the next push to the PR.
 
 ```bash
 cargo build --release
@@ -110,8 +113,8 @@ Fleet hosts do not run `cargo build` on every run.
 `~/.cargo/bin/neat_ai_rebase` and the stamp `.neat-ai-rebase.version` — named
 after the crate — prints that path on stdout, and removes `target/` after a
 successful install. A second run on the same crate version prints
-`[neat-ai-rebase] already installed v<x>` and runs no cargo command. Run it
-from the repository root:
+`[neat-ai-rebase] already installed v<x>` and runs no cargo command. It needs
+`jq` on the host (it parses `cargo metadata`). Run it from the repository root:
 
 ```bash
 path="$(./scripts/runlib.sh)"

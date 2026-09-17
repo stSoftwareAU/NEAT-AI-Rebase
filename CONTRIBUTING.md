@@ -8,9 +8,10 @@ Run the same gate CI runs:
 ./quality.sh
 ```
 
-It needs `shellcheck`, `actionlint`, and (optionally) `cargo-deny`. Everything
-else is plain `cargo`: `neat-core` is a git dependency pinned to a NEAT-AI-core
-release tag, so no sibling checkout is required.
+It needs `shellcheck`, `actionlint`, `jq` (`scripts/runlib.sh` parses
+`cargo metadata` with it), and (optionally) `cargo-deny`. Everything else is
+plain `cargo`: `neat-core` is a git dependency pinned to a NEAT-AI-core release
+tag, so no sibling checkout is required.
 
 `.github/workflows/ci.yml` runs that same gate on every PR into `Develop` and
 on the sub-issue PRs that target a shared `milestone/<slug>` branch: the filter
@@ -81,8 +82,9 @@ CI adds seven gates `quality.sh` cannot run locally:
   lists `milestone/*` alongside `*`, because a workflow glob `*` stops at a
   `/`. Reproduce it with
   `cargo install cargo-audit --version 0.22.2 && cargo audit` — it reads
-  `Cargo.lock` only, so it needs no build. Upgrade past the advisory; if it genuinely cannot be fixed, ignore
-  that one ID in `.cargo/audit.toml` (cargo-audit does not read `deny.toml`),
+  `Cargo.lock` only, so it needs no build. Upgrade past the advisory; if it
+  genuinely cannot be fixed, ignore that one ID in `.cargo/audit.toml`
+  (cargo-audit does not read `deny.toml`),
   add the same ID to `deny.toml` so both gates agree, and say why in the PR
   description. A failed *scheduled* run has no PR to fail, so its `notify` job
   opens — or comments on — an issue titled "cargo audit failed on the scheduled
@@ -99,7 +101,8 @@ CI adds seven gates `quality.sh` cannot run locally:
   `cargo install cargo-cyclonedx --version 0.5.9 && ./scripts/generate-sbom.sh`
   — that is the same script the workflow runs, and it needs no sibling
   checkout: `cargo cyclonedx` resolves the workspace through `cargo metadata`,
-  which fetches the pinned `neat-core` tag like any other dependency. It writes `sbom/<package-directory>.cdx.json` and
+  which fetches the pinned `neat-core` tag like any other dependency. It writes
+  `sbom/<package-directory>.cdx.json` and
   exits non-zero when nothing was produced or what was produced is not a
   CycloneDX document naming cargo components; `rebase/tests/sbom_gate.rs` drives
   every one of those paths.
@@ -159,7 +162,10 @@ pin moves only through this repository's own PRs: the family-sync step in
 `.github/workflows/version-increment.yml` runs `scripts/family-pins.sh`, which
 rewrites the tag to core's newest release and re-locks `Cargo.lock`, and the
 same job's single commit carries the moved pin and the crate-version bump. A
-breaking core release fails that PR's CI build, which is where it is handled.
+breaking core release turns that PR's CI build red, which is where it is
+handled — with `ACTIONS_PUSH` configured the sync commit is built by its own
+run, and without it by the next push to the PR, because GitHub suppresses the
+runs a `GITHUB_TOKEN` push would start.
 
 `scripts/runlib.sh` and `scripts/family-pins.sh` are owned by NEAT-AI-core: each
 is a byte-identical copy of the file at the same path on core's `Develop`.
