@@ -13,14 +13,9 @@
 # is that missing gate and runs below, before the pull request is opened
 # (Issue #91).
 #
-# Three things are deliberately different from `cargo-audit.yml`, the closest
+# Two things are deliberately different from `cargo-audit.yml`, the closest
 # neighbour:
 #
-#  * The sibling `../NEAT-AI-core` checkout IS required here. `cargo audit`
-#    only parses `Cargo.lock`, but `cargo upgrade` and `cargo update` resolve
-#    the whole workspace, and `neat-core` is a `path` dependency — without the
-#    sibling both abort with "failed to load manifest for dependency
-#    `neat-core`".
 #  * The job verifies the bump before proposing it. When `ACTIONS_PUSH` is
 #    unset the PR is opened with `GITHUB_TOKEN`, and GitHub then suppresses the
 #    downstream workflow runs — so a broken bump would arrive with no CI at all.
@@ -71,9 +66,6 @@ jobs:
           ref: Develop
           persist-credentials: false
 
-      - name: Set up NEAT-AI-core sibling (path dependency for neat-core)
-        uses: ./.github/actions/setup-neat-core
-
       # Same pin and same version as `ci.yml` and `cargo-audit.yml`;
       # `rust-toolchain.toml` pins the channel for anything run inside the
       # checkout anyway.
@@ -95,8 +87,9 @@ jobs:
       # bump is a code change, not a version-number change, so it stays a
       # deliberate PR — the run reports it as `incompatible: <crate>` in the
       # log. `--pinned=ignore` leaves any `=x.y.z` requirement alone.
-      # `neat-core` is a `path` dependency with no version requirement, so
-      # cargo-edit reports it as `local` and never rewrites it.
+      # `neat-core` is a `git` dependency pinned to a core release tag, which
+      # cargo-edit never rewrites: that pin moves only through
+      # `scripts/family-pins.sh` on this repository's own PRs (Issue #107).
       - name: Upgrade compatible requirements and refresh the lockfile
         run: |
           set -euo pipefail
@@ -120,7 +113,7 @@ jobs:
       # actually moved are judged — an unchanged crate is not re-queried every
       # week. A version public for less than 24h fails the run and no pull
       # request is raised; the next scheduled run proposes it once the window
-      # has passed. No `--exempt` is needed today: `neat-core` is a `path`
+      # has passed. No `--exempt` is needed today: `neat-core` is a `git`
       # dependency and no internal crate is consumed from crates.io.
       - name: Quarantine freshly published crate versions
         if: steps.changes.outputs.changed == 'true'

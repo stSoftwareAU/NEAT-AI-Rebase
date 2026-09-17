@@ -1,16 +1,27 @@
 #!/usr/bin/env bash
-# Hermetic tests for scripts/runlib.sh (Issue #108).
+# Hermetic tests for the copied scripts/runlib.sh (Issues #108, #107).
 #
-# Never runs a real cargo build. A cargo shim answers metadata and fails
-# loud if `cargo build` is invoked — the already-installed path must not
-# compile anything.
+# `scripts/runlib.sh` is NEAT-AI-core's canonical copy and is never edited here,
+# so these tests assert the contract this repository depends on: the crate's
+# install names (`neat_ai_rebase` beside the stamp `.neat-ai-rebase.version`),
+# the already-installed skip that runs no cargo command at all, and a failed
+# run that leaves the installed artefacts untouched.
+#
+# Never runs a real cargo build. Shims answer for `rustc` and log every `cargo`
+# invocation, so "ran no cargo command" is asserted rather than assumed.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 RUNLIB="${SCRIPT_DIR}/runlib.sh"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
 REAL_PATH="${PATH}"
+
+# The names the canonical runlib.sh derives from the crate: the bin target
+# carries `-` -> `_`, the stamp keeps the crate name as written.
+CRATE="neat-ai-rebase"
+BIN_NAME="neat_ai_rebase"
 
 PASSED=0
 FAILED=0
@@ -33,48 +44,64 @@ assert_eq() {
   fi
 }
 
-install_cargo_shim() {
-  local bin_dir="$1"
+# `cargo` logs every invocation and refuses it; `rustc` answers a version so the
+# toolchain gate neither downloads rustup nor reaches for a real compiler.
+install_shims() {
+  local bin_dir="$1" log="$2"
   mkdir -p "${bin_dir}"
-  cat >"${bin_dir}/cargo" <<'EOF'
+  cat >"${bin_dir}/cargo" <<EOF
 #!/usr/bin/env bash
-set -euo pipefail
-if [[ "${1:-}" == "metadata" ]]; then
-  printf '%s\n' '{"packages":[{"name":"neat-ai-rebase","version":"9.9.9"}]}'
-  exit 0
-fi
-echo "UNEXPECTED cargo: $*" >&2
+printf 'cargo %s\n' "\$*" >>"${log}"
+echo "UNEXPECTED cargo: \$*" >&2
 exit 99
 EOF
-  chmod +x "${bin_dir}/cargo"
+  cat >"${bin_dir}/rustc" <<'EOF'
+#!/usr/bin/env bash
+echo "rustc 1.98.0 (0000000 2026-01-01)"
+EOF
+  chmod +x "${bin_dir}/cargo" "${bin_dir}/rustc"
 }
 
-echo "=== already installed: no cargo build, bin path on stdout ==="
-HOME="${WORK_DIR}/home"
-export HOME
-mkdir -p "${HOME}/.cargo/bin"
-printf 'fake\n' >"${HOME}/.cargo/bin/neat_ai_rebase"
-chmod +x "${HOME}/.cargo/bin/neat_ai_rebase"
-printf '9.9.9\n' >"${HOME}/.cargo/bin/.neat_ai_rebase.version"
-install_cargo_shim "${WORK_DIR}/shim"
-PATH="${WORK_DIR}/shim:${REAL_PATH}"
-export PATH
+CARGO_HOME="${WORK_DIR}/cargo-home"
+export CARGO_HOME
+BIN_DIR="${CARGO_HOME}/bin"
+STAMP="${BIN_DIR}/.${CRATE}.version"
+CARGO_LOG="${WORK_DIR}/cargo.log"
+mkdir -p "${BIN_DIR}"
+install_shims "${WORK_DIR}/shim" "${CARGO_LOG}"
 
-OUT="$(bash "${RUNLIB}" 2>"${WORK_DIR}/already.err")"
-RC=$?
+# The version the manifest declares — the same value the fleet's stamp carries.
+VERSION="$("${SCRIPT_DIR}/auto-version.sh" --print "${REPO_ROOT}/rebase/Cargo.toml")"
+
+echo "=== already installed: no cargo command, bin path on stdout ==="
+printf 'fake\n' >"${BIN_DIR}/${BIN_NAME}"
+chmod +x "${BIN_DIR}/${BIN_NAME}"
+printf '%s\n' "${VERSION}" >"${STAMP}"
+: >"${CARGO_LOG}"
+
+OUT="$(cd "${REPO_ROOT}" && PATH="${WORK_DIR}/shim:${REAL_PATH}" bash "${RUNLIB}" 2>"${WORK_DIR}/already.err")" && RC=0 || RC=$?
 assert_eq "already-installed exits 0" "0" "${RC}"
 assert_eq "already-installed stdout is the CLI path" \
-  "${HOME}/.cargo/bin/neat_ai_rebase" "${OUT}"
-assert_eq "already-installed names the version on stderr" "0" \
-  "$(grep -q '\[neat_ai_rebase\] already installed v9.9.9' "${WORK_DIR}/already.err"; echo $?)"
+  "${BIN_DIR}/${BIN_NAME}" "${OUT}"
+assert_eq "already-installed names the crate and version on stderr" "0" \
+  "$(grep -q "\[${CRATE}\] already installed v${VERSION}" "${WORK_DIR}/already.err" && echo 0 || echo 1)"
+assert_eq "already-installed ran no cargo command" "" "$(cat "${CARGO_LOG}")"
 
 echo ""
-echo "=== missing stamp is not treated as already installed ==="
-rm -f "${HOME}/.cargo/bin/.neat_ai_rebase.version"
-OUT="$(bash "${RUNLIB}" 2>"${WORK_DIR}/rebuild.err")" && RC=0 || RC=$?
-assert_eq "missing stamp attempts a build and the shim refuses it" "99" "${RC}"
-assert_eq "refused build names unexpected cargo" "0" \
-  "$(grep -q 'UNEXPECTED cargo: build' "${WORK_DIR}/rebuild.err"; echo $?)"
+echo "=== stale stamp: a build is attempted and the install is left untouched ==="
+printf '0.0.0-stale\n' >"${STAMP}"
+: >"${CARGO_LOG}"
+
+OUT="$(cd "${REPO_ROOT}" && PATH="${WORK_DIR}/shim:${REAL_PATH}" bash "${RUNLIB}" 2>"${WORK_DIR}/rebuild.err")" && RC=0 || RC=$?
+assert_eq "stale stamp fails loud rather than reporting an install" "1" \
+  "$([[ "${RC}" -ne 0 ]] && echo 1 || echo 0)"
+assert_eq "stale stamp is not reported as already installed" "1" \
+  "$(grep -q "already installed" "${WORK_DIR}/rebuild.err" && echo 0 || echo 1)"
+assert_eq "stale stamp reaches for cargo" "1" \
+  "$([[ -s "${CARGO_LOG}" ]] && echo 1 || echo 0)"
+assert_eq "the failed run left the stamp alone" "0.0.0-stale" "$(cat "${STAMP}")"
+assert_eq "the failed run left the installed binary alone" "fake" \
+  "$(cat "${BIN_DIR}/${BIN_NAME}")"
 
 echo ""
 echo "=== summary: ${PASSED} passed, ${FAILED} failed ==="

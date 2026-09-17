@@ -12,8 +12,8 @@
 #
 # Mechanism:
 #   * Read `[[package]]` entries out of the refreshed `Cargo.lock`, keeping
-#     only those resolved from a registry source. `path` dependencies
-#     (`neat-core`) and `git` dependencies carry no crates.io publish date and
+#     only those resolved from a registry source. `path` dependencies and
+#     `git` dependencies (`neat-core`) carry no crates.io publish date and
 #     are reported as skipped, never silently passed.
 #   * Subtract the name+version pairs the baseline lockfile already had, so a
 #     dependency the bump did not move is not re-judged every week.
@@ -21,7 +21,7 @@
 #     version has been public for less than the quarantine window.
 #
 # Internal `stSoftwareAU` crates are exempt via `--exempt` (none are consumed
-# from crates.io today — `neat-core` is a `path` dependency — but the flag is
+# from crates.io today — `neat-core` is a `git` dependency — but the flag is
 # the seam for when one is).
 #
 # Usage:

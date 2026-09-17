@@ -34,18 +34,11 @@ if [[ "$SHELLCHECK_FAILED" -ne 0 ]]; then
 fi
 echo "shellcheck: all scripts passed"
 
-echo "Checking scripts/runlib.sh already-installed contract (Issue #108)..."
+echo "Checking scripts/runlib.sh already-installed contract (Issues #108, #107)..."
 ./scripts/test-runlib.sh
 
 echo "Linting GitHub Actions workflows..."
 ./scripts/actionlint.sh
-
-if [ -f "./../NEAT-AI-core/Cargo.toml" ]; then
-  echo "Gating on unhandled breaking neat-core bump..."
-  ./scripts/check-neat-core-version.sh
-else
-  echo "sibling ../NEAT-AI-core not found — skipping neat-core version gate (CI runs this for real)"
-fi
 
 echo "Running licence and dependency audit (cargo-deny)..."
 if ! command -v cargo-deny &>/dev/null; then

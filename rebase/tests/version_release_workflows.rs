@@ -243,6 +243,10 @@ fn version_increment_watches_every_gated_path() {
         "rebase/Cargo.toml",
         "Cargo.lock",
         "scripts/auto-version.sh",
+        // The copied NEAT-AI-core helpers (Issue #107): a PR that edits a copy
+        // is the PR whose family-sync step overwrites it.
+        "scripts/runlib.sh",
+        "scripts/family-pins.sh",
         ".github/workflows/version-increment.yml",
     ] {
         assert!(

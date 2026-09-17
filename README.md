@@ -62,18 +62,31 @@ come at its acceptance point and behind its own switch.
 
 ## Quick start
 
-Rebase is a Rust workspace that depends on the sibling
-[NEAT-AI-core](https://github.com/stSoftwareAU/NEAT-AI-core) checkout and
-invokes the [NEAT-AI-scorer](https://github.com/stSoftwareAU/NEAT-AI-scorer)
-binary (`rust_scorer`) as the judge — the same layout as NEAT-AI-Forests and
-NEAT-AI-Ockham:
+Rebase is a Rust workspace that consumes
+[NEAT-AI-core](https://github.com/stSoftwareAU/NEAT-AI-core) as a git
+dependency pinned to a core release tag (Issue #107) — no sibling checkout is
+needed to build it — and invokes the
+[NEAT-AI-scorer](https://github.com/stSoftwareAU/NEAT-AI-scorer) binary
+(`rust_scorer`) as the judge:
+
+```toml
+# rebase/Cargo.toml
+neat-core = { git = "https://github.com/stSoftwareAU/NEAT-AI-core", tag = "v0.22.5" }
+```
 
 ```text
 parent/
-├── NEAT-AI-core/      # path dependency: ../../NEAT-AI-core/neat-core
 ├── NEAT-AI-scorer/    # build it: cargo build --release  →  target/release/rust_scorer
 └── NEAT-AI-Rebase/
 ```
+
+The pin moves only through this repository's own pull requests:
+[`scripts/family-pins.sh`](./scripts/family-pins.sh) rewrites the tag to core's
+newest release and re-locks `Cargo.lock`, and
+[`.github/workflows/version-increment.yml`](./.github/workflows/version-increment.yml)
+runs it on every gated PR so the moved pin and the crate-version bump land in
+one commit. A breaking core release therefore fails that PR's CI build rather
+than arriving unannounced.
 
 ```bash
 cargo build --release
@@ -93,12 +106,23 @@ One command runs everything CI runs:
 ```
 
 Fleet hosts do not run `cargo build` on every run.
-[`scripts/runlib.sh`](./scripts/runlib.sh) (Issue #108) installs
-`~/.cargo/bin/neat_ai_rebase` and `.neat_ai_rebase.version`, prints that path on
-stdout, and removes `target/` after a successful install. A second run on the
-same crate version prints `[neat_ai_rebase] already installed v<x>` and runs no
-cargo command. It builds the `neat_ai_rebase` binary only. The byte-identical
-copy synced from NEAT-AI-core is a separate job (see the family-sync issue).
+[`scripts/runlib.sh`](./scripts/runlib.sh) installs
+`~/.cargo/bin/neat_ai_rebase` and the stamp `.neat-ai-rebase.version` — named
+after the crate — prints that path on stdout, and removes `target/` after a
+successful install. A second run on the same crate version prints
+`[neat-ai-rebase] already installed v<x>` and runs no cargo command. Run it
+from the repository root:
+
+```bash
+path="$(./scripts/runlib.sh)"
+```
+
+`scripts/runlib.sh` and `scripts/family-pins.sh` are **owned by NEAT-AI-core**:
+each has one home — the same path on core's `Develop` — and every sibling
+carries a byte-identical copy. Behaviour changes are made in NEAT-AI-core and
+re-copied outward, never edited here; the family-sync step in
+`version-increment.yml` refreshes both copies on every gated PR and fails the
+job when core's copies cannot be fetched.
 
 Two examples build runnable fixtures without a real corpus or champion:
 `cargo run --example print_bundle` prints the documented enhancement JSON, and
