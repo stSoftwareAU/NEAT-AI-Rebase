@@ -1,6 +1,7 @@
-# Single-crate workspace. `neat-core` comes from the sibling NEAT-AI-core
-# checkout (see `rebase/Cargo.toml`); NEAT-AI-scorer is invoked as the
-# `rust_scorer` binary, which is how every other NEAT-AI experiment consumes it.
+# Single-crate workspace. `neat-core` comes from a git dependency pinned to a
+# NEAT-AI-core release tag, so no sibling checkout is needed (see
+# `rebase/Cargo.toml`); NEAT-AI-scorer is invoked as the `rust_scorer` binary,
+# which is how every other NEAT-AI experiment consumes it.
 [workspace]
 members = ["rebase"]
 resolver = "2"

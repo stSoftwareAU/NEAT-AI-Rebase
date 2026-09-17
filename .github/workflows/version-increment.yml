@@ -1,5 +1,20 @@
-# Auto-increment `rebase/Cargo.toml` when gated paths change on a PR
-# (Issue #106).
+# Family-sync and auto-increment `rebase/Cargo.toml` when gated paths change on
+# a PR (Issues #106, #107).
+#
+# Two things happen here, in one job and one commit (Issue #107):
+#
+#   1. Family sync. `scripts/runlib.sh` and `scripts/family-pins.sh` each have
+#      one home — the same path on NEAT-AI-core `Develop`. Behaviour changes are
+#      made there and re-copied outward, never edited downstream, so this job
+#      fetches both canonical copies and overwrites any copy that differs. A
+#      fetch that fails — an unreachable raw URL, an HTTP error, an empty or
+#      non-script payload — fails the job rather than leaving a stale copy
+#      looking synced. `scripts/family-pins.sh` then moves the `neat-core` git
+#      tag in `rebase/Cargo.toml` to core's newest release and re-locks
+#      `Cargo.lock`; a pin it cannot resolve fails the job too.
+#   2. The version bump below. A moved pin changes what the binary is built
+#      from, so it must not land at an unchanged crate version — carrying both
+#      in one commit is what guarantees that.
 #
 # The fleet keys its rebuild off the crate version: `scripts/runlib.sh` rebuilds
 # a binary only when the version recorded beside it differs from the version in
@@ -20,7 +35,9 @@
 # read "already ahead" for every later sub-issue PR.
 #
 # `rebase/tests/version_release_workflows.rs` holds the trigger and the path
-# list; `rebase/tests/workflow_branch_filters.rs` holds the branch filter.
+# list; `rebase/tests/workflow_branch_filters.rs` holds the branch filter;
+# `rebase/tests/family_sync.rs` holds the family-sync order and what the
+# commit stages.
 name: Version Increment
 
 on:
@@ -33,15 +50,19 @@ on:
     branches:
       - Develop
       - "milestone/**"
-    # The gated paths: the crate's own source and manifests, plus the bump
-    # machinery itself so a change to the gate is gated by the gate. A change
-    # outside this list does not alter the built binary's own sources, so the
-    # fleet has nothing new to install and needs no version to key off.
+    # The gated paths: the crate's own source and manifests, plus the bump and
+    # family-sync machinery itself so a change to the gate is gated by the
+    # gate. The two copied helpers are listed so that a PR editing a copy is
+    # the PR whose sync overwrites it (Issue #107). A change outside this list
+    # does not alter the built binary's own sources, so the fleet has nothing
+    # new to install and needs no version to key off.
     paths:
       - "rebase/src/**"
       - "rebase/Cargo.toml"
       - "Cargo.lock"
       - "scripts/auto-version.sh"
+      - "scripts/runlib.sh"
+      - "scripts/family-pins.sh"
       - ".github/workflows/version-increment.yml"
 
 permissions:
@@ -77,6 +98,54 @@ jobs:
           # build script could read it; it is supplied per step instead.
           persist-credentials: false
 
+      # `scripts/family-pins.sh` runs `cargo update`, so the pinned toolchain is
+      # needed here. Same pin and same version as `ci.yml`.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable, frozen 2026-05-18
+        with:
+          toolchain: "1.98.0"
+
+      - name: Refresh the copied NEAT-AI-core helpers
+        env:
+          CANONICAL_RUNLIB_URL: https://raw.githubusercontent.com/stSoftwareAU/NEAT-AI-core/Develop/scripts/runlib.sh
+          CANONICAL_FAMILY_PINS_URL: https://raw.githubusercontent.com/stSoftwareAU/NEAT-AI-core/Develop/scripts/family-pins.sh
+        run: |
+          set -euo pipefail
+          fetched="$(mktemp)"
+          trap 'rm -f "$fetched"' EXIT
+          sync_one() {
+            local url="$1" target="$2"
+            # --fail turns any HTTP error into a non-zero exit: an unreachable
+            # canonical copy fails this job instead of passing on a stale one.
+            curl --fail --silent --show-error --location --retry 3 \
+              --output "$fetched" "$url"
+            if [ ! -s "$fetched" ]; then
+              echo "::error::fetched an empty $target from $url"
+              exit 1
+            fi
+            if ! head -n 1 "$fetched" | grep -q '^#!'; then
+              echo "::error::$url did not answer with a shell script"
+              exit 1
+            fi
+            if cmp -s "$fetched" "$target"; then
+              echo "$target is byte-identical to NEAT-AI-core Develop"
+            else
+              cp "$fetched" "$target"
+              chmod +x "$target"
+              echo "$target refreshed from NEAT-AI-core Develop"
+            fi
+          }
+          sync_one "$CANONICAL_RUNLIB_URL" scripts/runlib.sh
+          sync_one "$CANONICAL_FAMILY_PINS_URL" scripts/family-pins.sh
+
+      # The only way the `neat-core` pin moves: through this repository's own
+      # PR. An unresolvable remote or an unrewritable pin exits non-zero rather
+      # than leaving the pin quietly stale.
+      - name: Move the neat-core pin to the latest NEAT-AI-core release
+        run: |
+          set -euo pipefail
+          ./scripts/family-pins.sh
+
       - name: Bump the crate version when this PR has not already
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -97,12 +166,19 @@ jobs:
           fi
           ./scripts/auto-version.sh rebase/Cargo.toml "$base" Cargo.lock
 
-      # `ACTIONS_PUSH` is an org-level token; with only the default
-      # `GITHUB_TOKEN`, GitHub suppresses the workflow runs a pushed commit
-      # would otherwise start (the caveat `cargo-upgrade.yml` documents), so the
-      # bump commit becomes the PR head with no run of its own. It changes two
-      # version strings and nothing else, and the next push to the PR gates it.
-      - name: Commit and push the bump
+      # One commit carries all three outcomes — the refreshed copies, the moved
+      # pin and the bump — so a moved pin can never reach the PR at an
+      # unchanged crate version.
+      #
+      # `ACTIONS_PUSH` is an org-level token and matters more here than it did
+      # when this commit only moved two version strings: it now also carries a
+      # moved `neat-core` release pin and two replaced helper scripts. With only
+      # the default `GITHUB_TOKEN`, GitHub suppresses the workflow runs a pushed
+      # commit would otherwise start (the caveat `cargo-upgrade.yml` documents),
+      # so the commit becomes the PR head with no run of its own and the next
+      # push to the PR is what builds the moved pin. Configure `ACTIONS_PUSH` to
+      # have `ci.yml` gate the adopting commit itself.
+      - name: Commit and push the sync and the bump
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           IS_SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
@@ -110,22 +186,29 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- rebase/Cargo.toml Cargo.lock; then
-            echo "Version is already ahead of the base branch — nothing to commit"
+          SYNCED_PATHS=(
+            rebase/Cargo.toml
+            Cargo.lock
+            scripts/runlib.sh
+            scripts/family-pins.sh
+          )
+          if git diff --quiet -- "${SYNCED_PATHS[@]}"; then
+            echo "Helpers current, pin on the latest release, version already ahead of the base branch — nothing to commit"
             exit 0
           fi
           # A fork's branch cannot be pushed to, and its token is read-only.
-          # Failing here is the point: the missing bump is reported to the
-          # author rather than merged as a green skip.
+          # Failing here is the point: the missing bump or the stale copy is
+          # reported to the author rather than merged as a green skip.
           if [ "$IS_SAME_REPO" != "true" ]; then
-            echo "This PR needs a version bump and comes from a fork, which cannot be pushed to." >&2
-            echo "Run ./scripts/auto-version.sh rebase/Cargo.toml <base-version> Cargo.lock and push the result." >&2
+            echo "This PR needs a version bump or a helper refresh and comes from a fork, which cannot be pushed to." >&2
+            echo "Run ./scripts/family-pins.sh, re-copy scripts/runlib.sh and scripts/family-pins.sh from NEAT-AI-core Develop," >&2
+            echo "then ./scripts/auto-version.sh rebase/Cargo.toml <base-version> Cargo.lock, and push the result." >&2
             exit 1
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add rebase/Cargo.toml Cargo.lock
+          git add -- "${SYNCED_PATHS[@]}"
           version="$(./scripts/auto-version.sh --print rebase/Cargo.toml)"
-          git commit -m "chore: auto-increment crate version to ${version}"
+          git commit -m "chore: sync NEAT-AI-core helpers and set the crate version to ${version}"
           git push "https://x-access-token:${PUSH_TOKEN}@github.com/${REPOSITORY}.git" \
             "HEAD:${HEAD_REF}"

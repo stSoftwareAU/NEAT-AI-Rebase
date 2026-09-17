@@ -13,9 +13,10 @@
 # and a reviewer cannot tell a stale one from a current one. The artefact is
 # regenerated on every pull request and weekly on the schedule instead.
 #
-# `cargo cyclonedx` resolves the workspace through `cargo metadata`, so the
-# `../NEAT-AI-core` sibling `ci.yml` needs is required here too — without it
-# the `neat-core` path dependency does not resolve and no SBOM is produced.
+# `cargo cyclonedx` resolves the workspace through `cargo metadata`, which
+# needs no sibling checkout: `neat-core` is a git dependency pinned to a
+# NEAT-AI-core release tag (Issue #107), so the runner fetches it like any
+# other dependency.
 #
 # Third-party actions are pinned to 40-character commit SHAs, matching
 # `ci.yml`, `cargo-audit.yml` and `semgrep.yml`, so a hijacked tag cannot
@@ -66,9 +67,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Set up NEAT-AI-core sibling (path dependency for neat-core)
-        uses: ./.github/actions/setup-neat-core
 
       # Same pin and same version as `ci.yml` and `cargo-audit.yml`.
       - name: Install Rust toolchain

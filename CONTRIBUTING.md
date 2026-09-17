@@ -8,8 +8,10 @@ Run the same gate CI runs:
 ./quality.sh
 ```
 
-It needs the sibling `../NEAT-AI-core` checkout, `shellcheck`, `actionlint`,
-and (optionally) `cargo-deny`. Everything else is plain `cargo`.
+It needs `shellcheck`, `actionlint`, `jq` (`scripts/runlib.sh` parses
+`cargo metadata` with it), and (optionally) `cargo-deny`. Everything else is
+plain `cargo`: `neat-core` is a git dependency pinned to a NEAT-AI-core release
+tag, so no sibling checkout is required.
 
 `.github/workflows/ci.yml` runs that same gate on every PR into `Develop` and
 on the sub-issue PRs that target a shared `milestone/<slug>` branch: the filter
@@ -80,9 +82,9 @@ CI adds seven gates `quality.sh` cannot run locally:
   lists `milestone/*` alongside `*`, because a workflow glob `*` stops at a
   `/`. Reproduce it with
   `cargo install cargo-audit --version 0.22.2 && cargo audit` — it reads
-  `Cargo.lock` only, so it needs neither a build nor the `../NEAT-AI-core`
-  sibling. Upgrade past the advisory; if it genuinely cannot be fixed, ignore
-  that one ID in `.cargo/audit.toml` (cargo-audit does not read `deny.toml`),
+  `Cargo.lock` only, so it needs no build. Upgrade past the advisory; if it
+  genuinely cannot be fixed, ignore that one ID in `.cargo/audit.toml`
+  (cargo-audit does not read `deny.toml`),
   add the same ID to `deny.toml` so both gates agree, and say why in the PR
   description. A failed *scheduled* run has no PR to fail, so its `notify` job
   opens — or comments on — an issue titled "cargo audit failed on the scheduled
@@ -97,9 +99,10 @@ CI adds seven gates `quality.sh` cannot run locally:
   from `Cargo.lock` and `cargo metadata`, so a checked-in copy is stale the
   moment a dependency moves. Reproduce it with
   `cargo install cargo-cyclonedx --version 0.5.9 && ./scripts/generate-sbom.sh`
-  — that is the same script the workflow runs, and it needs the
-  `../NEAT-AI-core` sibling, because `cargo cyclonedx` resolves the workspace
-  through `cargo metadata`. It writes `sbom/<package-directory>.cdx.json` and
+  — that is the same script the workflow runs, and it needs no sibling
+  checkout: `cargo cyclonedx` resolves the workspace through `cargo metadata`,
+  which fetches the pinned `neat-core` tag like any other dependency. It writes
+  `sbom/<package-directory>.cdx.json` and
   exits non-zero when nothing was produced or what was produced is not a
   CycloneDX document naming cargo components; `rebase/tests/sbom_gate.rs` drives
   every one of those paths.
@@ -153,10 +156,21 @@ descendant, which is the bug.
 
 ## Dependencies
 
-`neat-core` is an unpinned `path` dependency tracking head, gated by
-`scripts/check-neat-core-version.sh` against the baseline recorded in
-`neat-core.expected-version`. Handling a breaking bump means updating the code
-**and** the baseline in one deliberate PR.
+`neat-core` is a git dependency pinned to a NEAT-AI-core **release tag**
+(Issue #107), so a core release never reaches this repository unannounced. The
+pin moves only through this repository's own PRs: the family-sync step in
+`.github/workflows/version-increment.yml` runs `scripts/family-pins.sh`, which
+rewrites the tag to core's newest release and re-locks `Cargo.lock`, and the
+same job's single commit carries the moved pin and the crate-version bump. A
+breaking core release turns that PR's CI build red, which is where it is
+handled — with `ACTIONS_PUSH` configured the sync commit is built by its own
+run, and without it by the next push to the PR, because GitHub suppresses the
+runs a `GITHUB_TOKEN` push would start.
+
+`scripts/runlib.sh` and `scripts/family-pins.sh` are owned by NEAT-AI-core: each
+is a byte-identical copy of the file at the same path on core's `Develop`.
+Never edit them here — make the change in NEAT-AI-core, and the family-sync step
+copies it back on the next gated PR.
 
 New third-party dependencies need a reason in the PR description and must pass
 `cargo deny check`.
@@ -166,11 +180,11 @@ runs `cargo upgrade --incompatible=ignore --pinned=ignore` plus `cargo update`
 at 06:00 UTC every Monday and opens `chore/cargo-upgrade` against `Develop`
 with the result. Reproduce it with
 `cargo install cargo-edit --version 0.13.13 --locked` and the same two
-commands — it resolves the workspace, so the sibling `../NEAT-AI-core` checkout
-must be present. Two things it deliberately does not do: it never bumps a
+commands. Two things it deliberately does not do: it never bumps a
 semver-incompatible requirement (a major bump is a code change, so it stays a
 hand-written PR — the run logs the crate as `incompatible`), and it never
-rewrites the `neat-core` path dependency, which cargo-edit reports as `local`.
+rewrites the `neat-core` git tag, which moves only through
+`scripts/family-pins.sh`.
 The scheduled run verifies its own bump with `cargo deny check` and the test
 suite before raising the PR, so a broken upgrade fails the run instead of
 arriving as a pull request.

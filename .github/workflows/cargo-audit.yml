@@ -8,8 +8,8 @@
 # following Monday with no code change at all.
 #
 # `cargo audit` reads `Cargo.lock` directly — it never resolves or builds the
-# workspace — so the `../NEAT-AI-core` sibling checkout that `ci.yml` needs is
-# deliberately absent here. Third-party actions are pinned to 40-character
+# workspace, so it needs no toolchain beyond the one it installs.
+# Third-party actions are pinned to 40-character
 # commit SHAs, matching `ci.yml`, `dependency-review.yml` and `markdown-lint.yml`,
 # so a hijacked tag cannot execute here, and `contents: read` is the whole
 # permission set: the job reads the checkout and writes nothing back.
