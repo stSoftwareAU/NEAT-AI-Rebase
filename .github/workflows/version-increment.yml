@@ -1,0 +1,131 @@
+# Auto-increment `rebase/Cargo.toml` when gated paths change on a PR
+# (Issue #106).
+#
+# The fleet keys its rebuild off the crate version: `scripts/runlib.sh` rebuilds
+# a binary only when the version recorded beside it differs from the version in
+# the manifest. A PR that changes source without changing the version therefore
+# ships nothing — the unattended machines keep running the stale binary. This
+# job runs `scripts/auto-version.sh`, so the bump happens whether or not the
+# author remembered it:
+#
+#   head == base  → bump the patch in `rebase/Cargo.toml` and `Cargo.lock`,
+#                   then commit and push it back onto the PR branch
+#   head >  base  → this PR already bumped it; nothing to do (idempotent)
+#   head <  base  → fail loud. A downgrade reuses a version the machines have
+#                   already built, so the new binary would never install.
+#
+# The comparison base is the branch the PR actually targets: milestone sub-issue
+# PRs merge into `milestone/<slug>` and never touch `Develop`, so a hardcoded
+# base would both skip them and, once the milestone branch carried one bump,
+# read "already ahead" for every later sub-issue PR.
+#
+# `rebase/tests/version_release_workflows.rs` holds the trigger and the path
+# list; `rebase/tests/workflow_branch_filters.rs` holds the branch filter.
+name: Version Increment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    # `milestone/**` is listed explicitly because a workflow branch glob `*`
+    # stops at a `/`: without it the sub-issue PRs that target a shared
+    # `milestone/<slug>` branch would merge source changes under an unchanged
+    # crate version (Issue #60). `**` matches nested slugs too.
+    branches:
+      - Develop
+      - "milestone/**"
+    # The gated paths: the crate's own source and manifests, plus the bump
+    # machinery itself so a change to the gate is gated by the gate. A change
+    # outside this list does not alter the built binary's own sources, so the
+    # fleet has nothing new to install and needs no version to key off.
+    paths:
+      - "rebase/src/**"
+      - "rebase/Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/auto-version.sh"
+      - ".github/workflows/version-increment.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: version-increment-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  version-increment:
+    name: Auto-increment Crate Version
+    # No same-repo `if:` guard on the job. A skipped job reports as success to
+    # a required status check, so guarding here would let a fork PR merge under
+    # an unchanged version — silently, and in exactly the case this gate
+    # exists for. A fork PR is still evaluated; it just cannot be pushed to, so
+    # the step below fails loud and asks the author to bump it by hand.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The head *commit*, not the head branch name: a fork's branch does
+          # not exist in this repository, and the job still has to evaluate a
+          # fork PR rather than skip it green.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          # The push token is never persisted into .git/config, where any later
+          # build script could read it; it is supplied per step instead.
+          persist-credentials: false
+
+      - name: Bump the crate version when this PR has not already
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          # Reading the base branch needs no credential on a public repository,
+          # so only the push below carries the token. A swallowed fetch would
+          # leave the comparison reading against nothing and look like a pass,
+          # so let the failure out.
+          git fetch --no-tags origin \
+            "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          if git cat-file -e "origin/${BASE_REF}:rebase/Cargo.toml" 2>/dev/null; then
+            git show "origin/${BASE_REF}:rebase/Cargo.toml" > "${RUNNER_TEMP}/base-Cargo.toml"
+            base="$(./scripts/auto-version.sh --print "${RUNNER_TEMP}/base-Cargo.toml")"
+          else
+            echo "Bootstrap: base branch has no rebase/Cargo.toml — treating version as 0.0.0"
+            base="0.0.0"
+          fi
+          ./scripts/auto-version.sh rebase/Cargo.toml "$base" Cargo.lock
+
+      # `ACTIONS_PUSH` is an org-level token; with only the default
+      # `GITHUB_TOKEN`, GitHub suppresses the workflow runs a pushed commit
+      # would otherwise start (the caveat `cargo-upgrade.yml` documents), so the
+      # bump commit becomes the PR head with no run of its own. It changes two
+      # version strings and nothing else, and the next push to the PR gates it.
+      - name: Commit and push the bump
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          IS_SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          PUSH_TOKEN: ${{ secrets.ACTIONS_PUSH || secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- rebase/Cargo.toml Cargo.lock; then
+            echo "Version is already ahead of the base branch — nothing to commit"
+            exit 0
+          fi
+          # A fork's branch cannot be pushed to, and its token is read-only.
+          # Failing here is the point: the missing bump is reported to the
+          # author rather than merged as a green skip.
+          if [ "$IS_SAME_REPO" != "true" ]; then
+            echo "This PR needs a version bump and comes from a fork, which cannot be pushed to." >&2
+            echo "Run ./scripts/auto-version.sh rebase/Cargo.toml <base-version> Cargo.lock and push the result." >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rebase/Cargo.toml Cargo.lock
+          version="$(./scripts/auto-version.sh --print rebase/Cargo.toml)"
+          git commit -m "chore: auto-increment crate version to ${version}"
+          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${REPOSITORY}.git" \
+            "HEAD:${HEAD_REF}"
