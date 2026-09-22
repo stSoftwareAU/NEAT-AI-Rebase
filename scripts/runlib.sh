@@ -129,6 +129,39 @@ _runlib_toml_value() {
   return 0
 }
 
+# Every `name` a `[[bin]]` table of manifest $1 declares, one per line. A crate
+# that ships a CLI beside bench binaries (NEAT-AI-scorer) declares several, and
+# only the whole list answers "is one of them named after the crate?".
+_runlib_bin_table_names() {
+  [[ -f "$1" ]] || return 0
+  awk '
+    {
+      line = $0
+      sub(/[[:space:]]*#.*$/, "", line)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+    }
+    line ~ /^\[/ {
+      hdr = line
+      gsub(/[[:space:]]/, "", hdr)
+      in_bin = (hdr == "[[bin]]") ? 1 : 0
+      next
+    }
+    !in_bin { next }
+    {
+      eq = index(line, "=")
+      if (eq == 0) next
+      k = substr(line, 1, eq - 1)
+      gsub(/[[:space:]]/, "", k)
+      if (k != "name") next
+      v = substr(line, eq + 1)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+      gsub(/^"|"$/, "", v)
+      print v
+    }
+  ' "$1"
+  return 0
+}
+
 # The `members` entries of the root manifest $1, one per line.
 _runlib_workspace_members() {
   [[ -f "$1" ]] || return 0
@@ -287,27 +320,28 @@ _runlib_expected_shape() {
   esac
 
   # An explicit `[[bin]]` table, or `autobins`, can rename or suppress the
-  # binary cargo would otherwise name after the package. One table that names
+  # binary cargo would otherwise name after the package. A table that names
   # the crate is still unambiguous, though — it is the shape every sibling
-  # shipping a CLI writes — so read it rather than paying a `cargo metadata`
-  # call on every skip. Several tables, a table naming something else (cargo
-  # may still autodiscover a second bin beside it), or an `autobins` key are
-  # not readable from one line each, and fall through to `cargo metadata`.
+  # shipping a CLI writes, whether alone (NEAT-AI-Backpropagation #152) or
+  # beside bench binaries (NEAT-AI-scorer #629) — so read the declared names
+  # rather than paying a `cargo metadata` call on every skip. Tables that name
+  # only other binaries are not conclusive (cargo may still autodiscover a bin
+  # named after the package beside them), and neither is an `autobins` key:
+  # both fall through to `cargo metadata`.
   local bin_tables declared_bin
   bin_tables="$(grep -cE '^[[:space:]]*\[\[bin\]\]' "$manifest" || true)"
   if grep -qE '^[[:space:]]*autobins[[:space:]]*=' "$manifest"; then
     return 1
   fi
-  if [[ "$bin_tables" -gt 1 ]]; then
+  if [[ "$bin_tables" -ge 1 ]]; then
+    while IFS= read -r declared_bin; do
+      [[ "$declared_bin" == "$crate_underscored" ]] || continue
+      _RUNLIB_EXPECTS_BIN=1
+      return 0
+    done <<EOF
+$(_runlib_bin_table_names "$manifest")
+EOF
     return 1
-  fi
-  if [[ "$bin_tables" -eq 1 ]]; then
-    # `[bin]` is the section argument for a `[[bin]]` header: the reader
-    # compares the header line with the brackets it already carries.
-    declared_bin="$(_runlib_toml_value "$manifest" '[bin]' name)"
-    [[ "$declared_bin" == "$crate_underscored" ]] || return 1
-    _RUNLIB_EXPECTS_BIN=1
-    return 0
   fi
   if [[ -f "$manifest_dir/src/main.rs" ||
     -f "$manifest_dir/src/bin/${crate_underscored}.rs" ]]; then
