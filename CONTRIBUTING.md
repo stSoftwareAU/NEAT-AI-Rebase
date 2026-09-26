@@ -126,6 +126,22 @@ to a PR cancels the run it supersedes instead of paying for a result nobody
 will read (Issue #85). `rebase/tests/workflow_concurrency.rs` holds this for
 every PR-triggered workflow, so a new gate cannot be added without it.
 
+A docs-only PR does not pay for the Rust build, the audits or the scanners
+(Issue #123). Each PR checker except gitleaks opens with a small `changes` job
+(a SHA-pinned `dorny/paths-filter` step with `pull-requests: read` and nothing
+else), and its expensive jobs `need` that job and run only when the verdict is
+not `'false'`. Anything outside `docs/**` and `**/*.md` counts as code.
+`markdown-lint.yml` inverts the check: it lints only when a Markdown file, its
+`.markdownlint-cli2.jsonc` config or the workflow itself changes. The gate is a
+job-level `if:`, never a workflow-level `paths:` filter. A skipped job still
+reports success, so a required check is satisfied, whereas a workflow that never
+runs reports nothing and blocks the merge. The gate also fails open: on a
+schedule, on `workflow_dispatch`, or when the classification itself fails, the
+output is empty and every job runs. Gitleaks stays on for every PR, because a
+secret can land in a docs page as easily as in code.
+`rebase/tests/workflow_change_gates.rs` holds this, including the file lists
+each filter must and must not fire on.
+
 ## What a change has to preserve
 
 Rebase exists to stop useful discoveries being destroyed at population
