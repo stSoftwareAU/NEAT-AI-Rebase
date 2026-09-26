@@ -10,6 +10,10 @@
 # empty for them and the action exits with ErrLicense. Those licence-less runs
 # fall back to the free, open-source gitleaks CLI, which needs no licence —
 # the scan still gates the PR either way.
+#
+# Unlike the other PR checkers, this scan has no `changes` gate (Issue #123):
+# a secret can land in a docs page as easily as in code, so it runs on every
+# PR. `rebase/tests/workflow_change_gates.rs` holds this.
 name: Gitleaks
 
 on:
