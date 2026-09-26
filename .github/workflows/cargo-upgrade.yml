@@ -66,13 +66,9 @@ jobs:
           ref: Develop
           persist-credentials: false
 
-      # Same pin and same version as `ci.yml` and `cargo-audit.yml`;
-      # `rust-toolchain.toml` pins the channel for anything run inside the
-      # checkout anyway.
+      # The shared pinned toolchain (`.github/actions/setup-rust`).
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable, frozen 2026-05-18
-        with:
-          toolchain: "1.98.0"
+        uses: ./.github/actions/setup-rust
 
       # Exact version, the way `ci.yml` installs cargo-deny: an unpinned
       # cargo-edit could change what this job rewrites without a diff. There is
@@ -124,6 +120,21 @@ jobs:
             --baseline-lockfile "$RUNNER_TEMP/Cargo.lock.baseline" \
             --lockfile Cargo.lock \
             --hours 24
+
+      # Same pin, paths and key as `ci.yml`, so the two share one cache and the
+      # verification below does not re-download every crate (Issue #124).
+      # Restored after the bump so the key hashes the lockfile actually built;
+      # a no-op run skips it. `rebase/tests/cargo_upgrade_cache.rs` holds this.
+      - name: Cache dependencies
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Install cargo-deny (prebuilt binary)
         if: steps.changes.outputs.changed == 'true'
