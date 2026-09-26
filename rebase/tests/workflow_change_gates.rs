@@ -129,10 +129,10 @@ fn trigger_keys(workflow: &str) -> Vec<(String, String)> {
         if indent == depth {
             current = Some(key.to_string());
             keys.push((key.to_string(), String::new()));
-        } else if let Some(trigger) = &current {
-            if !trimmed.starts_with('-') {
-                keys.push((trigger.clone(), key.trim().to_string()));
-            }
+        } else if let Some(trigger) = &current
+            && !trimmed.starts_with('-')
+        {
+            keys.push((trigger.clone(), key.trim().to_string()));
         }
     }
     keys
@@ -446,7 +446,10 @@ fn jobs_read_needs_outputs_and_the_filter_block() {
         changes.outputs.get("code").map(String::as_str),
         Some("${{ steps.filter.outputs.code }}")
     );
-    assert_eq!(setting(&changes.body, "predicate-quantifier"), Some("every"));
+    assert_eq!(
+        setting(&changes.body, "predicate-quantifier"),
+        Some("every")
+    );
     assert_eq!(setting(&changes.body, "id"), Some("filter"));
     assert_eq!(
         filters(&changes.body),
@@ -457,15 +460,16 @@ fn jobs_read_needs_outputs_and_the_filter_block() {
     );
 
     assert_eq!(parsed[1].needs, vec!["changes"]);
-    assert_eq!(parsed[1].condition.as_deref(), Some(gate_for("code").as_str()));
+    assert_eq!(
+        parsed[1].condition.as_deref(),
+        Some(gate_for("code").as_str())
+    );
     assert_eq!(parsed[2].needs, vec!["build", "lint"]);
 }
 
 #[test]
 fn filter_evaluation_follows_paths_filter_semantics() {
-    let code: Vec<String> = ["**", "!docs/**", "!**/*.md"]
-        .map(String::from)
-        .to_vec();
+    let code: Vec<String> = ["**", "!docs/**", "!**/*.md"].map(String::from).to_vec();
     assert!(filter_fires(&code, true, &["rebase/src/lib.rs"]));
     assert!(filter_fires(&code, true, &[".github/workflows/ci.yml"]));
     assert!(filter_fires(&code, true, &["README.md", "Cargo.toml"]));
@@ -537,7 +541,10 @@ fn every_gated_workflow_classifies_changes_with_a_pinned_read_only_filter() {
         );
 
         let declared = filters(&changes.body);
-        assert!(!declared.is_empty(), "{name}: the filter declares no filters");
+        assert!(
+            !declared.is_empty(),
+            "{name}: the filter declares no filters"
+        );
         for filter in declared.keys() {
             assert_eq!(
                 changes.outputs.get(filter).map(String::as_str),
@@ -627,7 +634,10 @@ fn code_gates_skip_docs_only_changes_and_nothing_else() {
         }
         for files in [
             &["README.md"][..],
-            &["docs/archive/pr-summaries/pr-summary-1.md", "CONTRIBUTING.md"],
+            &[
+                "docs/archive/pr-summaries/pr-summary-1.md",
+                "CONTRIBUTING.md",
+            ],
             &["docs/evidence/screenshot.png"],
         ] {
             assert!(
