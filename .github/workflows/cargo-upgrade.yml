@@ -125,6 +125,21 @@ jobs:
             --lockfile Cargo.lock \
             --hours 24
 
+      # Same pin, paths and key as `ci.yml`, so the two share one cache and the
+      # verification below does not re-download every crate (Issue #124).
+      # Restored after the bump so the key hashes the lockfile actually built;
+      # a no-op run skips it. `rebase/tests/cargo_upgrade_cache.rs` holds this.
+      - name: Cache dependencies
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: Install cargo-deny (prebuilt binary)
         if: steps.changes.outputs.changed == 'true'
         uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2.81.10
