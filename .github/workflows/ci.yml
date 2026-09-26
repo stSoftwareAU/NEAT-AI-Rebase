@@ -36,8 +36,38 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Skip the expensive jobs below on a docs-only PR (Issue #123). The gate is
+  # job-level, never a workflow `paths:` filter: a skipped job still reports
+  # success to branch protection, a workflow that never runs reports nothing
+  # and blocks the merge. It fails open — on schedule, dispatch or a failed
+  # classification the output is empty, which is not 'false', so every job
+  # runs. `rebase/tests/workflow_change_gates.rs` holds this.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Classify changed paths
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          # Anything outside `docs/**` and the Markdown pages is code.
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+
   quality:
     name: Quality Checks
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -101,6 +131,8 @@ jobs:
 
   shell-checks:
     name: Shell Script Quality
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

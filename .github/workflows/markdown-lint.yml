@@ -28,8 +28,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Lint only when Markdown or this linter's own config changes (Issue #123).
+  # The gate is job-level, never a workflow `paths:` filter: a skipped job
+  # still reports success to branch protection, a workflow that never runs
+  # reports nothing and blocks the merge. It fails open — on dispatch or a
+  # failed classification the output is empty, which is not 'false', so the
+  # lint runs. `rebase/tests/workflow_change_gates.rs` holds this.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      markdown: ${{ steps.filter.outputs.markdown }}
+    steps:
+      - name: Classify changed paths
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          filters: |
+            markdown:
+              - '**/*.md'
+              - '.markdownlint-cli2.jsonc'
+              - '.github/workflows/markdown-lint.yml'
+
   markdownlint:
     name: Markdown Lint
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.markdown != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
