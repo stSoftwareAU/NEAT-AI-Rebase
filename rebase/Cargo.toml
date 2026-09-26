@@ -1,6 +1,6 @@
 [package]
 name = "neat-ai-rebase"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 license = "Apache-2.0"
 description = "Rebase portable NEAT-AI improvements onto the latest champion and let the scorer decide."
@@ -24,7 +24,7 @@ path = "src/main.rs"
 # repository's own PR — `scripts/family-pins.sh`, run by
 # `.github/workflows/version-increment.yml`, rewrites the tag below to core's
 # newest release and re-locks `Cargo.lock` in the same commit as the bump.
-neat-core = { git = "https://github.com/stSoftwareAU/NEAT-AI-core", tag = "v0.22.7" }
+neat-core = { git = "https://github.com/stSoftwareAU/NEAT-AI-core", tag = "v0.22.11" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

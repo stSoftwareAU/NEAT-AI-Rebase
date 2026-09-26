@@ -57,13 +57,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # Same pin and same version as `ci.yml`. `rust-toolchain.toml` pins the
-      # channel for anything run inside the checkout, so installing `stable`
-      # here would just make rustup download 1.98.0 a second time.
+      # The shared pinned toolchain (`.github/actions/setup-rust`).
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable, frozen 2026-05-18
-        with:
-          toolchain: "1.98.0"
+        uses: ./.github/actions/setup-rust
 
       # Prebuilt binary at an exact version, the way `ci.yml` installs
       # cargo-deny. `cargo install cargo-audit` would rebuild the auditor from
