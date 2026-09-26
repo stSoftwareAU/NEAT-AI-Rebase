@@ -94,7 +94,7 @@ jobs:
         run: cargo build --workspace
 
       - name: Run tests
-        run: cargo test --workspace --all-features --verbose
+        run: cargo test --workspace --all-features -q
 
       - name: Build documentation
         run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
