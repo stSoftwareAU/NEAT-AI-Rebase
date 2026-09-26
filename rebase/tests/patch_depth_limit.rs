@@ -238,6 +238,67 @@ fn a_pathologically_nested_document_fails_closed() {
     assert!(matches!(err, EnhancementError::Malformed(_)), "{err}");
 }
 
+/// The bundle shape is bounded during the parse as well (Issue #120).
+///
+/// `EnhancementBundle::parse_json` reads the text twice — once as a generic
+/// value for the version check, once as the typed bundle — and both reads must
+/// fail closed on a pathological document before any tree is built.
+#[test]
+fn a_pathologically_nested_bundle_fails_closed() {
+    const LEVELS: usize = 100_000;
+    let mut text = String::from(
+        r#"{"version":1,"producer":"x","baseChecksum":"c","baseScore":0.5,"corpusIdentity":"i","enhancements":[{"meta":{"version":1,"id":"0","producer":"x","baseChecksum":"c","baseScore":0.5,"improvedScore":0.6,"corpusIdentity":"i","inputCount":2,"outputCount":1},"payload":{"kind":"forestPatch","patch":{"version":1,"output":0,"root":"#,
+    );
+    for _ in 0..LEVELS {
+        text.push_str(
+            r#"{"kind":"split","condition":{"terms":[{"feature":0,"weight":1.0}],"threshold":0.5},"left":{"kind":"leaf","correction":0.0},"right":"#,
+        );
+    }
+    text.push_str(r#"{"kind":"leaf","correction":0.5}"#);
+    text.push_str(&"}".repeat(LEVELS));
+    text.push_str("}}}]}");
+
+    let err = EnhancementBundle::parse_json(&text).expect_err("a 100k-deep bundle is refused");
+    // serde_json's nesting limit is what refuses it — mid-parse, not afterwards.
+    match err {
+        EnhancementError::Malformed(m) => assert!(m.contains("recursion limit"), "{m}"),
+        other => panic!("refused for the wrong reason: {other}"),
+    }
+}
+
+/// The deepest tree the parser will still build is refused by the depth
+/// guard, not by a stack overflow in the parse or in dropping the tree.
+///
+/// 100 levels sits under serde_json's nesting limit in both shapes, so this
+/// document is fully materialised before `check_patch_depth` sees it.
+#[test]
+fn the_deepest_parseable_tree_is_refused_by_the_depth_guard() {
+    let deep = enhancement_with(deep_root(100), "corpus-identity");
+    let one = serde_json::to_string(&deep).unwrap();
+    let bundle = serde_json::to_string(&EnhancementBundle::from_enhancements(vec![deep])).unwrap();
+
+    for (shape, err) in [
+        (
+            "enhancement",
+            Enhancement::parse_json(&one).expect_err("refused"),
+        ),
+        (
+            "bundle",
+            EnhancementBundle::parse_json(&bundle).expect_err("refused"),
+        ),
+    ] {
+        match err {
+            EnhancementError::Malformed(m) => {
+                assert!(
+                    m.contains("nests deeper"),
+                    "{shape} reason names the bound: {m}"
+                );
+            }
+            other => panic!("{shape} refused for the wrong reason: {other}"),
+        }
+    }
+}
+
 /// A bundle file the CLI reads from a directory is bounded too — the directory
 /// reader funnels through the same parser.
 #[test]

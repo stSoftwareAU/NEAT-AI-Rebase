@@ -335,6 +335,12 @@ impl Enhancement {
     /// graft's emitter — so the bound belongs at the parse boundary, before
     /// any of them sees the tree. The check itself recurses no deeper than
     /// [`MAX_PATCH_DEPTH`].
+    ///
+    /// The parse that builds the tree is bounded before this runs:
+    /// `serde_json::from_str` refuses any document nested past its default
+    /// 128-level recursion limit with an error rather than a stack overflow,
+    /// and that holds for both the untyped read in `check_version` and the
+    /// typed read (Issue #120). Only a tree within that limit reaches here.
     fn check_patch_depth(&self) -> Result<(), EnhancementError> {
         let Payload::ForestPatch { patch } = &self.payload else {
             return Ok(());
