@@ -429,12 +429,13 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
             .map(|p| p.display().to_string())
             .unwrap_or_default();
         if cli.harvest_from.is_some() {
-            let journal = Journal::new(output_dir.join("experiments.jsonl"));
-            let _ = journal.append(&Record::Result {
-                status: "nothingToDo".into(),
-                detail: Some(format!("nothing in {source} that the champion lacks")),
-                emitted_checksum: None,
-            });
+            journal
+                .append(&Record::Result {
+                    status: "nothingToDo".into(),
+                    detail: Some(format!("nothing in {source} that the champion lacks")),
+                    emitted_checksum: None,
+                })
+                .map_err(RunError::failure)?;
             return Ok(EXIT_NO_IMPROVEMENT);
         }
         return Err(RunError::incompatible(format!(
@@ -460,13 +461,15 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
     })
     .map_err(|e| RunError::incompatible(e.to_string()))?;
 
-    let _ = journal.append(&Record::Opening {
-        producer: producer.clone(),
-        opening_checksum: opening_checksum.clone(),
-        champion_checksum: outcome.champion_checksum.clone(),
-        corpus_identity: corpus.identity.clone(),
-        enhancement_count: enhancements.len(),
-    });
+    journal
+        .append(&Record::Opening {
+            producer: producer.clone(),
+            opening_checksum: opening_checksum.clone(),
+            champion_checksum: outcome.champion_checksum.clone(),
+            corpus_identity: corpus.identity.clone(),
+            enhancement_count: enhancements.len(),
+        })
+        .map_err(RunError::failure)?;
     journal
         .append_outcome(&outcome)
         .map_err(RunError::failure)?;
@@ -554,10 +557,12 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
                      screening could not save a corpus pass"
                 );
                 eprintln!("neat_ai_rebase: screen skipped — {reason}");
-                let _ = journal.append(&Record::Dropped {
-                    label: crate::journal::SCREEN_SKIPPED_LABEL.to_string(),
-                    reason,
-                });
+                journal
+                    .append(&Record::Dropped {
+                        label: crate::journal::SCREEN_SKIPPED_LABEL.to_string(),
+                        reason,
+                    })
+                    .map_err(RunError::failure)?;
                 outcome
             }
         }
@@ -589,7 +594,9 @@ pub fn run_with(cli: &Cli, scorer: Option<&dyn DirectoryScorer>) -> Result<i32, 
         ScorerMode::Full,
     )
     .map_err(|e| RunError::failure(e.to_string()))?;
-    let _ = journal.append(&Record::Verdict(Box::new(verdict.clone())));
+    journal
+        .append(&Record::Verdict(Box::new(verdict.clone())))
+        .map_err(RunError::failure)?;
 
     // Two outputs from one match: the checksum of whatever was emitted, and
     // the one-line story of what this run decided. Both outcomes get a
@@ -940,15 +947,17 @@ fn screen(
         let record_count = baseline_result.record_count;
         let (measured, survivors) =
             measure_phase(&outcome, &kept, &scores, baseline, cli.min_improvement);
-        let _ = journal.append(&Record::Screen {
-            phase,
-            sample_rate: rate,
-            resolution: cli.min_improvement,
-            baseline_score: baseline,
-            record_count,
-            kept: survivors.len(),
-            enhancements: measured.clone(),
-        });
+        journal
+            .append(&Record::Screen {
+                phase,
+                sample_rate: rate,
+                resolution: cli.min_improvement,
+                baseline_score: baseline,
+                record_count,
+                kept: survivors.len(),
+                enhancements: measured.clone(),
+            })
+            .map_err(RunError::failure)?;
         eprintln!(
             "neat_ai_rebase: screen phase {phase} kept {} of {} \
              (baseline {baseline:.6} over {record_count} records at rate {rate})",
@@ -1457,6 +1466,77 @@ mod tests {
             "a harvest with no delta is normal"
         );
         assert!(!out(&cli).join("population-candidate.json").exists());
+    }
+
+    /// Put a directory where the journal file belongs, so every append fails.
+    fn break_journal(output_dir: &Path) {
+        let path = output_dir.join("experiments.jsonl");
+        if path.is_file() {
+            std::fs::remove_file(&path).unwrap();
+        }
+        std::fs::create_dir_all(&path).unwrap();
+    }
+
+    /// A scorer that breaks the journal as it scores, so the next append fails.
+    struct JournalBreakingScorer<'a> {
+        inner: ScriptedScorer,
+        output_dir: &'a Path,
+    }
+
+    impl DirectoryScorer for JournalBreakingScorer<'_> {
+        fn score_directory(
+            &self,
+            creature_dir: &Path,
+            training_dir: &Path,
+            mode: ScorerMode,
+        ) -> Result<BTreeMap<String, ScoreResult>, crate::scorer::ScorerError> {
+            break_journal(self.output_dir);
+            self.inner.score_directory(creature_dir, training_dir, mode)
+        }
+
+        fn identity(&self) -> String {
+            self.inner.identity()
+        }
+    }
+
+    /// Issue #121: a harvest with nothing to do must not report success when
+    /// its `result` record never reached the journal.
+    #[test]
+    fn an_unwritable_journal_fails_a_harvest_with_nothing_to_do() {
+        let champion = linear_hidden_creature(2.0);
+        let h = harness(&champion);
+        let mut cli = h.cli.clone();
+        cli.enhancements = None;
+        cli.harvest_from = Some(champion_file(&cli).to_path_buf());
+        break_journal(out(&cli));
+
+        let err = run_with(&cli, Some(&ScriptedScorer::flat(0.5))).unwrap_err();
+        assert_eq!(err.code, EXIT_FAILURE);
+        assert!(err.message.contains("experiments.jsonl"), "{}", err.message);
+    }
+
+    /// Issue #121: a verdict that cannot be journalled stops the run before
+    /// anything is published, rather than emitting a candidate with no record.
+    #[test]
+    fn an_unwritable_journal_stops_the_run_before_a_candidate_is_published() {
+        let champion = evolved_descendant(2.0, 0.5);
+        let h = harness(&champion);
+        write_bundle(
+            &h.enhancements.join("bundle.json"),
+            vec![forest(&h.corpus_identity, 1, 0.25)],
+        );
+        let scorer = JournalBreakingScorer {
+            inner: ScriptedScorer::flat(0.50).with("single-00", 0.60),
+            output_dir: out(&h.cli),
+        };
+
+        let err = run_with(&h.cli, Some(&scorer)).unwrap_err();
+        assert_eq!(err.code, EXIT_FAILURE);
+        assert!(err.message.contains("experiments.jsonl"), "{}", err.message);
+        assert!(
+            !out(&h.cli).join("population-candidate.json").exists(),
+            "nothing is published once the journal has failed"
+        );
     }
 
     #[test]
