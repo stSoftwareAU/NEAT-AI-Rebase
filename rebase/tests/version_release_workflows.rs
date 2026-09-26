@@ -248,6 +248,9 @@ fn version_increment_watches_every_gated_path() {
         "scripts/runlib.sh",
         "scripts/family-pins.sh",
         ".github/workflows/version-increment.yml",
+        // The toolchain this gate installs moved into the shared action
+        // (Issue #125); a pin change there still has to run the gate.
+        ".github/actions/setup-rust/action.yml",
     ] {
         assert!(
             matches_any(&paths, changed),
