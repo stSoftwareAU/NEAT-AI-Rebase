@@ -26,7 +26,7 @@ path = "src/main.rs"
 # repository's own PR — `scripts/family-pins.sh`, run by
 # `.github/workflows/version-increment.yml`, rewrites the tag below to core's
 # newest release and re-locks `Cargo.lock` in the same commit as the bump.
-neat-core = { git = "https://github.com/stSoftwareAU/NEAT-AI-core", tag = "v0.22.15" }
+neat-core = { git = "https://github.com/stSoftwareAU/NEAT-AI-core", tag = "v0.22.16" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
