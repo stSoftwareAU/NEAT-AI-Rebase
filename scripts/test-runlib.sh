@@ -73,11 +73,11 @@ EOF
   cat >"${bin_dir}/rustc" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${1:-}" == "-vV" ]]; then
-  echo "rustc 1.98.0 (0000000 2026-01-01)"
+  echo "rustc 1.99.0 (0000000 2026-01-01)"
   echo "host: x86_64-unknown-linux-gnu"
   exit 0
 fi
-echo "rustc 1.98.0 (0000000 2026-01-01)"
+echo "rustc 1.99.0 (0000000 2026-01-01)"
 EOF
   chmod +x "${bin_dir}/cargo" "${bin_dir}/rustc"
 }
