@@ -60,9 +60,10 @@
 # moved without its digests can only fail closed.
 #
 # The toolchain gate (Issue #700) runs on the build path only. The required
-# version is the highest `rust-version` across the crate's resolved dependency
-# graph — `cargo metadata --filter-platform <host>` — including the crate's
-# own, because a dependency can demand a newer rustc than any family crate
+# version is the highest of the NEAT-AI **family floor** (Issue #747, below)
+# and every `rust-version` across the crate's resolved dependency graph —
+# `cargo metadata --filter-platform <host>` — including the crate's own,
+# because a dependency can demand a newer rustc than any family crate
 # declares. A rustc at or above it passes with no `rustup` call at all, and is
 # never downgraded. Below it, and with `rustup` on PATH: an unpinned crate gets
 # `rustup update stable`, and a crate pinned to a *channel* — `stable`,
@@ -93,6 +94,30 @@ _runlib_die() {
 # Cargo's home, honouring CARGO_HOME exactly as rustup and cargo do.
 _runlib_cargo_home() {
   printf '%s' "${CARGO_HOME:-$HOME/.cargo}"
+}
+
+# The NEAT-AI family floor (Issue #747): the oldest Rust any family build
+# accepts, whatever the crate and its dependencies declare. The gate below
+# treats it as one more `rust-version`, so a host whose toolchain is older is
+# moved forward by rustup before anything is compiled.
+#
+# Why a floor at all: the gate can only enforce a version something declares.
+# NEAT-AI-Discovery#2395 used a std API stable from 1.95 while the highest
+# declared `rust-version` in its graph was 1.93.1, so the gate passed hosts on
+# 1.93/1.94 and every build on the fleet died with E0658. A crate that needs
+# more than the floor declares its own `rust-version` and that wins; the floor
+# guarantees nobody builds with less.
+#
+# Raise it here, in NEAT-AI-core, and every sibling picks it up through its
+# family-sync job. RUNLIB_FAMILY_MIN_RUST overrides it (tests); it must still
+# be a plain version.
+_RUNLIB_FAMILY_MIN_RUST_DEFAULT="1.99"
+
+_runlib_family_min_rust() {
+  local floor="${RUNLIB_FAMILY_MIN_RUST:-$_RUNLIB_FAMILY_MIN_RUST_DEFAULT}"
+  [[ "$floor" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] ||
+    _runlib_die "RUNLIB_FAMILY_MIN_RUST must be a Rust version such as 1.99 or 1.99.0, got '${floor}'"
+  printf '%s' "$floor"
 }
 
 # Value of `key` inside `[section]` of the TOML file $1, unquoted. Prints
@@ -672,7 +697,8 @@ _runlib_ensure_toolchain() {
 }
 
 # The highest `rust-version` in the crate's resolved dependency graph for this
-# host, including the crate's own. Prints nothing when nothing declares one.
+# host, including the crate's own and the family floor (Issue #747) — so it
+# always prints a version.
 #
 # The crate's own `rust-version` is not the requirement: a dependency can
 # demand a newer rustc than anything in the family declares, and that is
@@ -680,7 +706,10 @@ _runlib_ensure_toolchain() {
 # 1.93.1` with no family crate declaring `rust-version` at all. This resolves
 # the graph, so it runs on the build path only, never on the skip.
 _runlib_required_rust_version() {
-  local manifest="$1" root_manifest="$2" verbose host graph declared candidate best=""
+  local manifest="$1" root_manifest="$2" verbose host graph declared candidate best="" floor
+  # Read here, not in the heredoc below: a die inside that `$( )` would end
+  # only the substitution, and a malformed floor would be silently skipped.
+  floor="$(_runlib_family_min_rust)" || exit 1
   local -a metadata_args
   # The host filter keeps the maximum to the platform actually being built — a
   # Windows-only dependency's `rust-version` is not this host's problem. A
@@ -711,6 +740,7 @@ _runlib_required_rust_version() {
   done <<EOF
 $declared
 $(_runlib_crate_field "$manifest" "$root_manifest" rust-version)
+$floor
 EOF
 
   printf '%s' "$best"
@@ -795,6 +825,90 @@ _runlib_check_msrv() {
   printf 'runlib: rust-toolchain.toml pins %s, below the Rust %s this dependency graph requires — using %s for this run; bump the pin in rust-toolchain.toml\n' \
     "$pin" "$required" "$required" >&2
   return 0
+}
+
+# `cargo` with the gate's toolchain override, when it set one. All of cargo's
+# output goes to stderr: stdout is this script's return value.
+_runlib_cargo() {
+  if [[ -n "$_RUNLIB_TOOLCHAIN_OVERRIDE" ]]; then
+    RUSTUP_TOOLCHAIN="$_RUNLIB_TOOLCHAIN_OVERRIDE" cargo "$@"
+  else
+    cargo "$@"
+  fi
+}
+
+# Run `cargo "$@"`, streaming its output to stderr, and keep a copy in $1.
+# Returns cargo's exit status.
+_runlib_cargo_logged() {
+  local log="$1" rc=0
+  shift
+  { _runlib_cargo "$@" 2>&1 1>&3 | tee "$log" >&2; } 3>&2 || rc=$?
+  return "$rc"
+}
+
+# The build, healed once when it fails because the compiler is too old
+# (Issue #747).
+#
+# `error[E0658]: use of unstable library feature …` on a *stable* toolchain
+# means the code uses an API newer than this rustc: the gate let it through
+# because nothing declared the version it needs. For an unpinned crate, or one
+# pinned to a moving channel, `rustup update <channel>` is the cure, so it is
+# run and the build retried exactly once. An exact pin, a toolchain override,
+# or a nightly toolchain is never moved behind the repository's back — those
+# fail loud naming the bump to make. Any other build failure keeps cargo's own
+# exit status, unchanged.
+_runlib_build_with_e0658_retry() {
+  local repo_root="$1" log rc=0 pin channel release
+  shift
+  log="$(mktemp "${TMPDIR:-/tmp}/runlib-build.XXXXXX")" ||
+    _runlib_die "could not create a temporary file for the build log"
+  _runlib_cargo_logged "$log" "$@" || rc=$?
+  if [[ $rc -eq 0 ]]; then
+    rm -f "$log"
+    return 0
+  fi
+  if ! grep -q 'error\[E0658\]' "$log"; then
+    rm -f "$log"
+    exit "$rc"
+  fi
+  rm -f "$log"
+
+  _runlib_read_rust_version "; the build failed with E0658"
+  release="$(rustc -vV 2>/dev/null | sed -n 's/^release: //p')"
+  pin="$(_runlib_pinned_channel "$repo_root")"
+  if [[ "$release" == *nightly* || "$pin" == nightly* ]]; then
+    _runlib_die "the build failed with E0658 on a nightly toolchain (rustc ${_RUNLIB_ACTIVE_RUST_VERSION}) — this script does not move nightly; fix the feature gate or the pin"
+  fi
+  if [[ -n "$_RUNLIB_TOOLCHAIN_OVERRIDE" ]] || { [[ -n "$pin" ]] && _runlib_is_exact_version "$pin"; }; then
+    _runlib_die "the build failed with E0658: the code uses a Rust API newer than the pinned toolchain ${_RUNLIB_TOOLCHAIN_OVERRIDE:-$pin} (rustc ${_RUNLIB_ACTIVE_RUST_VERSION}) — raise channel in rust-toolchain.toml and rust-version in Cargo.toml to the release that stabilised it"
+  fi
+  command -v rustup >/dev/null 2>&1 ||
+    _runlib_die "the build failed with E0658 (rustc ${_RUNLIB_ACTIVE_RUST_VERSION} is too old for this code) and rustup is not on PATH — install a newer Rust from https://rustup.rs and re-run"
+  channel="${pin:-stable}"
+  _runlib_assert_toolchain_name "$channel" "the toolchain channel"
+  printf 'runlib: the build failed with E0658 — rustc %s is older than this code needs and no rust-version declares it; running: rustup update %s, then retrying the build once\n' \
+    "$_RUNLIB_ACTIVE_RUST_VERSION" "$channel" >&2
+  rustup update "$channel" >&2 ||
+    _runlib_die "rustup update $channel failed after the build hit E0658 — install a newer Rust from https://rustup.rs and re-run"
+
+  log="$(mktemp "${TMPDIR:-/tmp}/runlib-build.XXXXXX")" ||
+    _runlib_die "could not create a temporary file for the build log"
+  rc=0
+  _runlib_cargo_logged "$log" "$@" || rc=$?
+  if [[ $rc -eq 0 ]]; then
+    rm -f "$log"
+    _runlib_read_rust_version ""
+    printf 'runlib: the retried build succeeded on rustc %s — declare rust-version = "%s" in Cargo.toml so the gate installs it up front\n' \
+      "$_RUNLIB_ACTIVE_RUST_VERSION" "$_RUNLIB_ACTIVE_RUST_VERSION" >&2
+    return 0
+  fi
+  if grep -q 'error\[E0658\]' "$log"; then
+    rm -f "$log"
+    _runlib_read_rust_version ""
+    _runlib_die "the build still fails with E0658 after rustup update ${channel} (rustc ${_RUNLIB_ACTIVE_RUST_VERSION}) — the code needs a Rust newer than the ${channel} channel offers"
+  fi
+  rm -f "$log"
+  exit "$rc"
 }
 
 # Remove the checkout's build directory and report what that freed.
@@ -1033,11 +1147,7 @@ runlib_install() {
   # RUSTFLAGS is the caller's: this script neither sets nor edits it. The
   # toolchain override, when the gate set one, reaches this one command and
   # goes no further.
-  if [[ -n "$_RUNLIB_TOOLCHAIN_OVERRIDE" ]]; then
-    RUSTUP_TOOLCHAIN="$_RUNLIB_TOOLCHAIN_OVERRIDE" cargo "${build_args[@]}" >&2
-  else
-    cargo "${build_args[@]}" >&2
-  fi
+  _runlib_build_with_e0658_retry "$repo_root" "${build_args[@]}"
 
   local bin_dir lib_dir release_dir bin_file lib_file
   local staged_bin="" staged_lib="" installed_bin="" installed_lib=""
