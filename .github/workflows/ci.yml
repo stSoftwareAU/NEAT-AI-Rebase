@@ -9,7 +9,7 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
     # `milestone/*` is listed explicitly because a workflow branch glob `*`
     # stops at a `/`: without it, the sub-issue PRs that target a shared
     # `milestone/<slug>` branch merge with no quality gate at all, and the gap
@@ -43,6 +43,7 @@ jobs:
   # classification the output is empty, which is not 'false', so every job
   # runs. `rebase/tests/workflow_change_gates.rs` holds this.
   changes:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Detect changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -67,7 +68,7 @@ jobs:
   quality:
     name: Quality Checks
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ (!cancelled() && needs.changes.outputs.code != 'false') && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -132,7 +133,7 @@ jobs:
   shell-checks:
     name: Shell Script Quality
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ (!cancelled() && needs.changes.outputs.code != 'false') && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -172,7 +173,7 @@ jobs:
   ci-required:
     name: CI Required Checks
     needs: [quality, shell-checks]
-    if: always()
+    if: ${{ (always()) && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
