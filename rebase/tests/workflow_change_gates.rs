@@ -704,7 +704,7 @@ fn markdown_lint_runs_when_any_markdown_or_its_config_changes() {
 }
 
 #[test]
-fn the_secrets_scan_stays_on_for_every_ready_pull_request() {
+fn the_secrets_scan_stays_on_for_every_pull_request_including_drafts() {
     for (name, body) in named_workflows(&ALWAYS_ON) {
         let parsed = jobs(&body);
         assert!(
@@ -713,8 +713,8 @@ fn the_secrets_scan_stays_on_for_every_ready_pull_request() {
         );
         for job in &parsed {
             assert!(
-                job.condition.as_deref() == Some(when_ready(None).as_str()) && job.needs.is_empty(),
-                "{name}: job `{}` must run on every ready PR regardless of changed paths",
+                job.condition.is_none() && job.needs.is_empty(),
+                "{name}: job `{}` must scan every PR including drafts, regardless of changed paths",
                 job.id
             );
         }
