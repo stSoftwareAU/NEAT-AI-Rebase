@@ -42,7 +42,7 @@ name: Version Increment
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
     # `milestone/**` is listed explicitly because a workflow branch glob `*`
     # stops at a `/`: without it the sub-issue PRs that target a shared
     # `milestone/<slug>` branch would merge source changes under an unchanged
@@ -76,6 +76,7 @@ concurrency:
 
 jobs:
   version-increment:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Auto-increment Crate Version
     # No same-repo `if:` guard on the job. A skipped job reports as success to
     # a required status check, so guarding here would let a fork PR merge under

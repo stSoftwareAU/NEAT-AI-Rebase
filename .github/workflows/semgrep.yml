@@ -15,6 +15,9 @@ name: Semgrep
 
 on:
   pull_request:
+    # Draft PRs are work in progress (owner, 2026-10-23): CI runs
+    # once, when the PR is marked ready.
+    types: [opened, synchronize, reopened, ready_for_review]
     # `*` stops at a `/`, so it matches `Develop` but never
     # `milestone/<slug>` — the shared branch milestone sub-issue PRs target.
     # `milestone/*` is listed explicitly so those PRs are scanned as they
@@ -41,6 +44,7 @@ jobs:
   # classification the output is empty, which is not 'false', so every job
   # runs. `rebase/tests/workflow_change_gates.rs` holds this.
   changes:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Detect changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -65,7 +69,7 @@ jobs:
   semgrep:
     name: SAST Scan
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ (!cancelled() && needs.changes.outputs.code != 'false') && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     container:

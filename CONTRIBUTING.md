@@ -2,6 +2,13 @@
 
 ## Before you open a PR
 
+Draft PRs are work in progress (owner, 23 October 2026), so PR jobs wait until
+the PR is ready. `ready_for_review` starts the same checks as an opened ready
+PR. This boundary includes the change classifier; secret scanning retains
+its always-on exception, including drafts. Ready PRs
+retain every existing path, permission and fail-open check below; schedules
+and manual dispatches retain their existing behaviour.
+
 Run the same gate CI runs:
 
 ```bash
@@ -137,7 +144,7 @@ job-level `if:`, never a workflow-level `paths:` filter. A skipped job still
 reports success, so a required check is satisfied, whereas a workflow that never
 runs reports nothing and blocks the merge. The gate also fails open: on a
 schedule, on `workflow_dispatch`, or when the classification itself fails, the
-output is empty and every job runs. Gitleaks stays on for every PR, because a
+output is empty and every job runs. Gitleaks stays on for every PR, including drafts, because a
 secret can land in a docs page as easily as in code.
 `rebase/tests/workflow_change_gates.rs` holds this, including the file lists
 each filter must and must not fire on.

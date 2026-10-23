@@ -9,6 +9,9 @@ name: Markdown Lint
 
 on:
   pull_request:
+    # Draft PRs are work in progress (owner, 2026-10-23): CI runs
+    # once, when the PR is marked ready.
+    types: [opened, synchronize, reopened, ready_for_review]
     # `milestone/*` is listed explicitly because a workflow branch glob `*`
     # stops at a `/`: without it, sub-issue PRs into `milestone/<slug>` merge
     # unlinted (Issue #62).
@@ -35,6 +38,7 @@ jobs:
   # failed classification the output is empty, which is not 'false', so the
   # lint runs. `rebase/tests/workflow_change_gates.rs` holds this.
   changes:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Detect changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -57,7 +61,7 @@ jobs:
   markdownlint:
     name: Markdown Lint
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.markdown != 'false' }}
+    if: ${{ (!cancelled() && needs.changes.outputs.markdown != 'false') && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
