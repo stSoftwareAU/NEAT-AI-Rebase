@@ -40,6 +40,17 @@ const MARKDOWN_WORKFLOW: &str = "markdown-lint.yml";
 /// The id of the change-detection job every gated workflow declares.
 const CHANGES_JOB: &str = "changes";
 
+/// The owner's draft boundary leaves ready PRs and non-PR events unchanged.
+const READY_EVENT: &str = "github.event_name != 'pull_request' || !github.event.pull_request.draft";
+
+/// Retain the existing condition in full, then apply the draft boundary.
+fn when_ready(condition: Option<&str>) -> String {
+    match condition {
+        Some(condition) => format!("${{{{ ({condition}) && ({READY_EVENT}) }}}}"),
+        None => format!("${{{{ {READY_EVENT} }}}}"),
+    }
+}
+
 /// Repository root — `CARGO_MANIFEST_DIR` is `<root>/rebase`.
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -291,9 +302,12 @@ fn filters(job_body: &str) -> BTreeMap<String, Vec<String>> {
     found
 }
 
-/// The value of a `key:` line anywhere in a job body, or `None`.
+/// A step setting below the job's own four-column keys, or `None`.
 fn setting<'a>(job_body: &'a str, key: &str) -> Option<&'a str> {
     job_body.lines().find_map(|line| {
+        if line.len() - line.trim_start().len() <= 4 {
+            return None;
+        }
         let trimmed = line.trim().trim_start_matches("- ");
         trimmed
             .strip_prefix(key)
@@ -414,12 +428,14 @@ fn jobs_read_needs_outputs_and_the_filter_block() {
     let workflow = concat!(
         "jobs:\n",
         "  changes:\n",
+        "    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}\n",
         "    permissions:\n",
         "      pull-requests: read\n",
         "    outputs:\n",
         "      code: ${{ steps.filter.outputs.code }}\n",
         "    steps:\n",
         "      - id: filter\n",
+        "        if: github.event_name == 'pull_request'\n",
         "        uses: dorny/paths-filter@0123456789abcdef0123456789abcdef01234567 # v4\n",
         "        with:\n",
         "          predicate-quantifier: every\n",
@@ -451,6 +467,11 @@ fn jobs_read_needs_outputs_and_the_filter_block() {
         Some("every")
     );
     assert_eq!(setting(&changes.body, "id"), Some("filter"));
+    assert_eq!(
+        setting(&changes.body, "if"),
+        Some("github.event_name == 'pull_request'"),
+        "a job-level draft guard must not hide the filter step's PR-only guard"
+    );
     assert_eq!(
         filters(&changes.body),
         BTreeMap::from([(
@@ -530,8 +551,9 @@ fn every_gated_workflow_classifies_changes_with_a_pinned_read_only_filter() {
             "{name}: listing a PR's files needs `pull-requests: read` and nothing more"
         );
         assert!(
-            changes.needs.is_empty() && changes.condition.is_none(),
-            "{name}: `{CHANGES_JOB}` must always run — it is the verdict every job waits on"
+            changes.needs.is_empty()
+                && changes.condition.as_deref() == Some(when_ready(None).as_str()),
+            "{name}: `{CHANGES_JOB}` must run on every ready PR and non-PR event"
         );
         assert_eq!(
             setting(&changes.body, "if"),
@@ -573,7 +595,12 @@ fn every_job_waits_for_the_verdict_and_fails_open() {
                 directly_gated += 1;
                 let condition = job.condition.as_deref().unwrap_or_default();
                 assert!(
-                    declared.keys().any(|filter| condition == gate_for(filter)),
+                    declared.keys().any(|filter| {
+                        let gate = format!(
+                            "!cancelled() && needs.{CHANGES_JOB}.outputs.{filter} != 'false'"
+                        );
+                        condition == when_ready(Some(&gate))
+                    }),
                     "{name}: job `{}` must carry the fail-open gate `{}` on a declared filter, \
                      found `{condition}`",
                     job.id,
@@ -677,7 +704,7 @@ fn markdown_lint_runs_when_any_markdown_or_its_config_changes() {
 }
 
 #[test]
-fn the_secrets_scan_stays_on_for_every_pull_request() {
+fn the_secrets_scan_stays_on_for_every_ready_pull_request() {
     for (name, body) in named_workflows(&ALWAYS_ON) {
         let parsed = jobs(&body);
         assert!(
@@ -686,8 +713,8 @@ fn the_secrets_scan_stays_on_for_every_pull_request() {
         );
         for job in &parsed {
             assert!(
-                job.condition.is_none() && job.needs.is_empty(),
-                "{name}: job `{}` must run unconditionally on every PR",
+                job.condition.as_deref() == Some(when_ready(None).as_str()) && job.needs.is_empty(),
+                "{name}: job `{}` must run on every ready PR regardless of changed paths",
                 job.id
             );
         }
