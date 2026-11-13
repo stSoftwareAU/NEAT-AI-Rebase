@@ -16,8 +16,7 @@ precedes discovery. Its reported complete discovery runs have limited replicatio
 The pin is `2610.05950v1`. SHA-256
 `bc492f7ed3a83a12ba2f610817ab1e7957615cfb730ae195217d2a4ad8836f2e`
 identifies the reviewed **tool-extracted UTF-8 body**, not the original HTML or
-PDF. Extraction used web-reader lines 124–1149 inclusive, discarded `L<number>: `
-prefixes, replaced `【number†label】` links with `label`, retained other characters,
+PDF. Extraction used web-reader lines 124–1149 inclusive, discarded line-number prefixes and their following spaces, replaced `【number†label】` links with `label`, retained other characters,
 and joined lines with LF including a final LF. Direct downloads returned HTTP 403;
 no original-file checksum is claimed. The paper is not redistributed.
 
