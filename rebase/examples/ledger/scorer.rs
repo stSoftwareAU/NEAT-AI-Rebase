@@ -38,15 +38,16 @@ pub(crate) fn parse(text: &str) -> Result<BTreeMap<String, ScoreResult>, ScorerE
 pub(crate) struct BoundedScorer {
     binary: std::path::PathBuf,
     args: Vec<String>,
-    timeout: String,
+    timeout: std::path::PathBuf,
     seconds: u32,
     checksum: String,
+    environment: BTreeMap<String, String>,
 }
 
 #[cfg(not(test))]
 impl BoundedScorer {
     pub(crate) fn from_manifest(path: &std::path::Path) -> Result<Self, String> {
-        let manifest = super::manifest::Manifest::load(path)?;
+        let manifest: super::manifest::Manifest = super::manifest::read_json(path)?;
         let timeout = ["timeout", "gtimeout"]
             .into_iter()
             .find(|candidate| {
@@ -56,12 +57,17 @@ impl BoundedScorer {
                     .is_ok_and(|out| out.status.success())
             })
             .ok_or("a bounded experiment requires timeout or gtimeout")?;
+        let timeout = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+            .map(|directory| directory.join(timeout))
+            .find_map(|path| path.canonicalize().ok())
+            .ok_or("cannot resolve timeout executable")?;
         Ok(Self {
             binary: manifest.scorer.path,
             args: manifest.protocol.scorer_args,
-            timeout: timeout.into(),
+            timeout,
             seconds: manifest.protocol.evaluation_timeout_seconds,
             checksum: manifest.scorer.sha256,
+            environment: manifest.scorer_environment,
         })
     }
 }
@@ -78,6 +84,8 @@ impl neat_ai_rebase::scorer::DirectoryScorer for BoundedScorer {
             return Err(ScorerError::NotAuthoritative(mode.label()));
         }
         let out = std::process::Command::new(&self.timeout)
+            .env_clear()
+            .envs(&self.environment)
             .args(["--signal=KILL", &self.seconds.to_string()])
             .arg(&self.binary)
             .args(&self.args)

@@ -16,6 +16,8 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Create synthetic smoke inputs; never evidence of representative benefit.
+    PrepareSmoke { output: PathBuf, scorer: PathBuf },
     /// Pin the protocol and every input before validation.
     Freeze { draft: PathBuf, manifest: PathBuf },
     /// Run or resume both arms; never publish a population candidate.
@@ -24,6 +26,7 @@ enum Command {
 
 fn main() -> Result<(), String> {
     match Args::parse().command {
+        Command::PrepareSmoke { output, scorer } => ledger::smoke::prepare(&output, &scorer),
         Command::Freeze { draft, manifest } => ledger::freeze(&draft, &manifest),
         Command::Run { manifest, output } => {
             let scorer = ledger::scorer::BoundedScorer::from_manifest(&manifest)?;

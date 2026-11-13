@@ -4,6 +4,8 @@ mod manifest;
 mod results;
 mod runner;
 pub(crate) mod scorer;
+#[cfg(not(test))]
+pub(crate) mod smoke;
 
 pub(crate) use manifest::freeze;
 pub(crate) use runner::run;

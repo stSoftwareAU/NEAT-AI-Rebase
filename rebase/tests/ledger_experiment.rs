@@ -701,3 +701,44 @@ fn an_interrupted_call_is_charged_and_retried_while_a_partial_line_is_refused() 
     assert!(error.contains("incomplete final line"), "{error}");
     assert!(inner.calls.borrow().is_empty());
 }
+
+#[test]
+fn a_malformed_cached_rejection_is_not_a_reusable_failure() {
+    let h = Harness::new();
+    h.freeze();
+    let scorer = Scorer {
+        sample_score: Some(0.4),
+        ..Scorer::winning()
+    };
+    ledger::run(&h.manifest, &h.output, &scorer).unwrap();
+    let path = h.output.join("ledger-v1.jsonl");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let modified: Vec<String> = text
+        .lines()
+        .map(|line| {
+            let mut value: Value = serde_json::from_str(line).unwrap();
+            if value["event"]["stage"] == "screen" && value["event"]["state"] == "rejected" {
+                value["event"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("measurement");
+            }
+            value.to_string()
+        })
+        .collect();
+    std::fs::write(&path, format!("{}\n", modified.join("\n"))).unwrap();
+    let calls = scorer.calls.borrow().len();
+    let error = ledger::run(&h.manifest, &h.output, &scorer).unwrap_err();
+    assert!(error.contains("measurement"), "{error}");
+    assert_eq!(scorer.calls.borrow().len(), calls);
+}
+
+#[test]
+fn adding_a_corpus_file_changes_the_frozen_context_before_any_scorer_call() {
+    let h = Harness::new(); h.freeze();
+    std::fs::copy(h.training.join("data.bin"), h.training.join("extra.bin")).unwrap();
+    let scorer = Scorer::winning();
+    let error = ledger::run(&h.manifest, &h.output, &scorer).unwrap_err();
+    assert!(error.contains("corpus membership changed"), "{error}");
+    assert!(scorer.calls.borrow().is_empty());
+}

@@ -1,6 +1,6 @@
 //! Freeze the inputs and protocol before validation touches the scorer.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -150,6 +150,7 @@ pub(super) struct Manifest {
     pub dirty_checkout: bool,
     pub toolchain: String,
     pub scorer: Artifact,
+    pub scorer_environment: BTreeMap<String, String>,
     pub corpus_identity: String,
     pub corpus: Vec<CorpusFile>,
     pub calibration_corpus: Vec<CorpusFile>,
@@ -159,6 +160,18 @@ pub(super) struct Manifest {
     pub patches: Vec<Artifact>,
     pub samples: Vec<Vec<RecordRef>>,
     pub freeze_seconds: f64,
+}
+
+pub(super) fn scorer_environment() -> BTreeMap<String, String> {
+    [
+        ("NEAT_SCORER_GPU", "off"),
+        ("NEAT_SCORER_ACTIVATION_THREADS", "1"),
+        ("NEAT_SCORER_FILE_THREADS", "1"),
+        ("RAYON_NUM_THREADS", "1"),
+    ]
+    .into_iter()
+    .map(|(key, value)| (key.into(), value.into()))
+    .collect()
 }
 
 pub(super) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
@@ -237,6 +250,9 @@ fn validate_protocol(draft: &Draft) -> Result<(), String> {
         .any(|s| !matches!(s.as_str(), "--gpu=off" | "--cost=MSE"))
     {
         return Err("scorerArgs permits only --gpu=off and --cost=MSE".into());
+    }
+    if draft.scorer_args.iter().collect::<BTreeSet<_>>().len() != draft.scorer_args.len() {
+        return Err("scorerArgs must not repeat a flag".into());
     }
     Ok(())
 }
@@ -367,6 +383,11 @@ pub(crate) fn freeze(draft_path: &Path, destination: &Path) -> Result<(), String
     let started = Instant::now();
     let mut protocol: Draft = read_json(draft_path)?;
     validate_protocol(&protocol)?;
+    for flag in ["--gpu=off", "--cost=MSE"] {
+        if !protocol.scorer_args.iter().any(|arg| arg == flag) {
+            protocol.scorer_args.push(flag.into());
+        }
+    }
     protocol.training = protocol
         .training
         .canonicalize()
@@ -445,6 +466,7 @@ pub(crate) fn freeze(draft_path: &Path, destination: &Path) -> Result<(), String
         dirty_checkout: !git(&["status", "--porcelain"])?.is_empty(),
         toolchain: include_str!("../../../rust-toolchain.toml").into(),
         scorer: Artifact::pin(&protocol.scorer)?,
+        scorer_environment: scorer_environment(),
         samples: protocol
             .seeds
             .iter()
@@ -472,6 +494,9 @@ impl Manifest {
             || manifest.method_text_sha256 != METHOD_TEXT_SHA256
         {
             return Err("unsupported experiment version or research method".into());
+        }
+        if manifest.scorer_environment != scorer_environment() {
+            return Err("unsupported scorer environment".into());
         }
         if manifest.parents.len() != 3
             || manifest.samples.len() != manifest.protocol.seeds.len()

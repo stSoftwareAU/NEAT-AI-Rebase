@@ -54,10 +54,12 @@ fn arm(manifest: &Manifest, ledger: &Ledger, seed: u64, arm: &str, common: f64) 
         "replaySeconds": events.iter().filter(|e| e.stage == "replay").map(|e| e.seconds).sum::<f64>(),
         "ledgerSeconds": events.iter().map(|e| e.ledger_seconds).sum::<f64>(),
         "sharedSeconds": common, "totalSeconds": total_seconds,
+        "budgetOverrunSeconds": (total_seconds - manifest.protocol.budget.seconds).max(0.0),
         "scoredRecords": events.iter().filter(|e| e.state != State::ReusedRejection && e.stage != "complete")
             .filter_map(|e| e.measurement.as_ref()).map(|m| m.baseline.record_count + m.child.record_count).sum::<u64>(),
         "improvementPerEvaluationHour": improvement.map(|gain| gain * 3600.0 / total_seconds),
         "coverage": complete.len() as f64 / manifest.patches.len() as f64,
+        "targetCoverage": full as f64 / manifest.patches.len() as f64,
     })
 }
 
@@ -120,7 +122,8 @@ pub(super) fn summarise(manifest: &Manifest, hash: &str, ledger: &Ledger) -> Val
     let ci = interval(&deltas);
     let complete = pairs.iter().all(|p| {
         ["control", "ledger"].iter().all(|a| {
-            p[a]["coverage"] == 1.0
+                p[a]["coverage"] == 1.0
+                    && p[a]["budgetOverrunSeconds"] == 0.0
                 && p[a]["operationalFailures"] == 0
                 && p[a]["interruptedEvaluations"] == 0
         })
@@ -128,12 +131,14 @@ pub(super) fn summarise(manifest: &Manifest, hash: &str, ledger: &Ledger) -> Val
     let lost: u64 = pairs.iter().map(|p| p["lostWins"].as_u64().unwrap()).sum();
     let enough = deltas.len() >= manifest.protocol.success.minimum_paired_runs;
     let decision = if !complete
-        || !enough
+        || pairs.len() < manifest.protocol.success.minimum_paired_runs
         || manifest.protocol.evidence_class != EvidenceClass::Representative
     {
         "inconclusive"
     } else if lost > manifest.protocol.success.maximum_lost_wins as u64 {
         "remove"
+    } else if !enough {
+        "inconclusive"
     } else if ci.is_some_and(|bounds| bounds[0] > manifest.protocol.success.minimum_rate_gain) {
         "retain"
     } else if ci.is_some_and(|bounds| bounds[1] < 0.0) {
@@ -144,6 +149,7 @@ pub(super) fn summarise(manifest: &Manifest, hash: &str, ledger: &Ledger) -> Val
     json!({ "version": VERSION, "manifestSha256": hash, "pairedRuns": pairs,
         "status": if complete { "complete" } else { "incomplete" },
         "maintenanceDecision": decision, "rateDelta95PercentInterval": ci,
+        "pairedRateMeasurements": deltas.len(),
         "uncertainty": "paired percentile bootstrap, 2000 resamples, seed 0x140; descriptive across fixed-input sample seeds",
         "evidenceClass": manifest.protocol.evidence_class,
         "representativeBenefitEstablished": decision == "retain",

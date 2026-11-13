@@ -141,6 +141,14 @@ beats publishing that creature, the second grafts every scorer-verified
 discovery the fittest creature is missing back onto it. Each carries its own
 usage in the file header.
 
+`ledger_experiment` is a separate, opt-in paired comparison of ordinary replay
+with a frozen sample, two unrelated receiving lineages, and full confirmation.
+It records unsuccessful attempts as well as executable payload references,
+pins its inputs before validation, and supports restart. See
+[`docs/ledger-experiment.md`](docs/ledger-experiment.md) for the protocol and
+commands. Representative validation remains outstanding; correctness fixtures
+do not establish an optimisation benefit.
+
 ### Command line
 
 ```text
@@ -426,6 +434,7 @@ rather than on a variance estimate.
 | [`docs/idempotence.md`](docs/idempotence.md) | how producers mark enhancements and how duplicate application is avoided |
 | [`docs/failure-model.md`](docs/failure-model.md) | every fail-closed case, and what is safe to retry |
 | [`docs/integration.md`](docs/integration.md) | the producer checklist, with worked Forest and Ockham examples |
+| [`docs/ledger-experiment.md`](docs/ledger-experiment.md) | frozen paired replay protocol, experimental ledger, restart and evidence limits |
 
 ## Relationship to other projects
 

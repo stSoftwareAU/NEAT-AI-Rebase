@@ -2,7 +2,7 @@
 
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::path::Path;
 use std::time::Instant;
 
@@ -37,7 +37,7 @@ pub(super) enum State {
     BudgetExhausted,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Measurement {
     pub baseline: ScoreResult,
@@ -91,7 +91,7 @@ pub(super) struct Cost {
 }
 
 impl Ledger {
-    fn open(path: &Path, manifest: &str) -> Result<Self, String> {
+    fn open(path: &Path, manifest: &str, protocol: &Manifest) -> Result<Self, String> {
         let mut events = Vec::new();
         let mut costs = Vec::new();
         if path.exists() {
@@ -129,6 +129,7 @@ impl Ledger {
                         if event.manifest != manifest {
                             return Err("ledger belongs to another frozen manifest".into());
                         }
+                        validate_event(&event, &value["event"], protocol, manifest, &events)?;
                         events.push(event);
                     }
                     // Legacy records contain no experiment cache evidence and stay byte-identical.
@@ -170,7 +171,9 @@ impl Ledger {
         self.journal
             .append_entry(&json!({"record":"experiment", "version":VERSION, "event":cost}))
             .map_err(|e| format!("ledger cost append: {e}"))?;
-        File::open(self.journal.path())
+        OpenOptions::new()
+            .append(true)
+            .open(self.journal.path())
             .and_then(|f| f.sync_data())
             .map_err(|e| format!("ledger cost sync: {e}"))?;
         self.costs.push(cost);
@@ -183,7 +186,9 @@ impl Ledger {
         self.journal
             .append_entry(&json!({"record": "experiment", "version": VERSION, "event": event}))
             .map_err(|e| format!("ledger append: {e}"))?;
-        File::open(self.journal.path())
+        OpenOptions::new()
+            .append(true)
+            .open(self.journal.path())
             .and_then(|f| f.sync_data())
             .map_err(|e| format!("ledger sync: {e}"))?;
         self.previous_write_seconds = started.elapsed().as_secs_f64();
@@ -396,11 +401,11 @@ impl Attempt<'_> {
         // Final outcomes stay sealed; other rejections apply only to this receiving context.
         if self.arm == "ledger"
             && stage_name != "full"
-            && let Some(previous) = ledger
-                .events
-                .iter()
-                .rev()
-                .find(|e| e.context == event.context && e.state == State::Rejected)
+            && let Some(previous) = ledger.events.iter().rev().find(|e| {
+                e.context == event.context
+                    && e.child_hash == event.child_hash
+                    && e.state == State::Rejected
+            })
         {
             event.state = State::ReusedRejection;
             event.source_event = Some(previous.id);
@@ -609,12 +614,15 @@ pub(crate) fn run(
         .map_err(|e| format!("ledger lock: {e}"))?;
     lock.try_lock()
         .map_err(|e| format!("ledger already in use: {e}"))?;
-    let mut ledger = Ledger::open(&output.join("ledger-v1.jsonl"), &manifest_hash)?;
+    let mut ledger = Ledger::open(&output.join("ledger-v1.jsonl"), &manifest_hash, &manifest)?;
     let result_path = output.join("results.json");
     if result_path.exists() {
         let result: Value = read_json(&result_path)?;
         if result["manifestSha256"] != manifest_hash {
             return Err("results belong to another manifest".into());
+        }
+        if result != results::summarise(&manifest, &manifest_hash, &ledger) {
+            return Err("stored results do not match the experiment ledger".into());
         }
         return Ok(result);
     }
@@ -716,4 +724,122 @@ pub(crate) fn run(
     let result = results::summarise(&manifest, &manifest_hash, &ledger);
     write_new(&result_path, &result)?;
     Ok(result)
+}
+
+fn validate_event(
+    event: &Event,
+    raw: &Value,
+    protocol: &Manifest,
+    manifest: &str,
+    prior: &[Event],
+) -> Result<(), String> {
+    for field in ["childHash", "measurement", "failure", "sourceEvent"] {
+        if raw.get(field).is_none() {
+            return Err(format!("ledger event missing {field}"));
+        }
+    }
+    if !protocol.protocol.seeds.contains(&event.seed)
+        || !matches!(event.arm.as_str(), "control" | "ledger")
+        || !matches!(
+            event.stage.as_str(),
+            "replay" | "screen" | "peer1" | "peer2" | "full" | "complete"
+        )
+        || protocol
+            .patches
+            .get(event.attempt)
+            .is_none_or(|p| p.sha256 != event.patch.sha256 || p.path != event.patch.path)
+        || !event.seconds.is_finite()
+        || event.seconds < 0.0
+        || !event.ledger_seconds.is_finite()
+        || event.ledger_seconds < 0.0
+    {
+        return Err("invalid ledger evaluation context or runtime".into());
+    }
+    let parent = match event.stage.as_str() {
+        "peer1" => Some(1),
+        "peer2" => Some(2),
+        "replay" => None,
+        _ => Some(0),
+    };
+    if parent.map_or_else(
+        || {
+            !protocol
+                .parents
+                .iter()
+                .any(|p| p.checksum == event.parent_hash)
+        },
+        |index| protocol.parents[index].checksum != event.parent_hash,
+    ) {
+        return Err("ledger receiving parent differs from frozen context".into());
+    }
+    let expected = sha256_hex(
+        &serde_json::to_vec(&json!([
+            manifest,
+            event.seed,
+            event.arm,
+            event.stage,
+            event.patch.sha256,
+            event.parent_hash,
+        ]))
+        .map_err(|e| e.to_string())?,
+    );
+    if event.context != expected {
+        return Err("ledger context checksum differs".into());
+    }
+    if let Some(measured) = &event.measurement {
+        // Use raw entries, so legacy ScoreResult defaults cannot hide omitted fields.
+        let scores = super::scorer::parse(
+            &json!({
+                "baseline": raw["measurement"]["baseline"], "child": raw["measurement"]["child"],
+            })
+            .to_string(),
+        )
+        .map_err(|e| format!("ledger measurement: {e}"))?;
+        if scores["baseline"].record_count != scores["child"].record_count
+            || measured.score_delta != measured.child.score - measured.baseline.score
+            || measured.error_delta != measured.child.error - measured.baseline.error
+            || measured.complexity_delta
+                != measured.child.complexity_penalty - measured.baseline.complexity_penalty
+        {
+            return Err("ledger measurement deltas or coverage disagree".into());
+        }
+        let margin = protocol.protocol.min_improvement;
+        if (event.state == State::Accepted && measured.score_delta <= margin)
+            || (event.state == State::Rejected
+                && if event.stage == "screen" {
+                    measured.score_delta >= -margin
+                } else {
+                    measured.score_delta > margin
+                })
+        {
+            return Err("ledger decision disagrees with its measurement".into());
+        }
+    } else if matches!(
+        event.state,
+        State::Accepted | State::Rejected | State::ReusedRejection
+    ) {
+        return Err("ledger rejection or acceptance has no measurement".into());
+    }
+    if event.state == State::OperationalFailure
+        && (event.failure.is_none() || event.measurement.is_some())
+    {
+        return Err(
+            "ledger operational failure requires a cause and unavailable measurement".into(),
+        );
+    }
+    if event.state == State::ReusedRejection {
+        let source = prior
+            .iter()
+            .find(|e| Some(e.id) == event.source_event && e.state == State::Rejected);
+        if source.is_none_or(|e| {
+            e.context != event.context
+                || e.child_hash != event.child_hash
+                || e.measurement != event.measurement
+        }) || event.stage == "full"
+            || event.arm != "ledger"
+        {
+            return Err("ledger reuse has no matching measured rejection".into());
+        }
+    }
+    Ok(())
 }
