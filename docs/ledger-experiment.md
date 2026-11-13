@@ -252,7 +252,8 @@ public repository. Representative paired validation and the maintenance verdict
 remain part of the same issue.
 
 The archived [smoke manifest](experiments/ledger-140-smoke-manifest.json),
-[paired results](experiments/ledger-140-smoke-results.json), and
+[paired results](experiments/ledger-140-smoke-results.json),
+[raw replay ledger](experiments/ledger-140-smoke-ledger.jsonl), and
 [execution metadata](experiments/ledger-140-smoke-execution.json) record a separate
 native-scorer execution. It completed four sample-seed pairs with no operational
 failures. Across those pairs, ledger replay avoided four duplicate screen failures,
