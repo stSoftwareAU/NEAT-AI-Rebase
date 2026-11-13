@@ -132,6 +132,14 @@ pub struct ScreenedEnhancement {
     tag = "record"
 )]
 pub enum Record {
+    /// Opt-in experiment event, kept separate from ordinary run records.
+    /// The experiment owns its versioned event schema and replay reader.
+    Experiment {
+        /// Experimental schema version; independent of enhancement versions.
+        version: u32,
+        /// Versioned experiment payload, including unsuccessful evaluations.
+        event: serde_json::Value,
+    },
     /// What the run was asked to do.
     Opening {
         /// Producer of the bundle.
