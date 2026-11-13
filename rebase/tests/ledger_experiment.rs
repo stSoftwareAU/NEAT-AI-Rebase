@@ -779,3 +779,15 @@ fn adding_a_corpus_file_changes_the_frozen_context_before_any_scorer_call() {
     assert!(error.contains("corpus membership changed"), "{error}");
     assert!(scorer.calls.borrow().is_empty());
 }
+
+#[test]
+fn the_strict_parser_accepts_a_recorded_native_scorer_response() {
+    let results =
+        ledger::scorer::parse(include_str!("fixtures/ledger-scorer-output.json")).unwrap();
+    let baseline = &results["baseline"];
+    assert_eq!(baseline.record_count, 4096);
+    assert!((baseline.error - 0.000633332126869237).abs() < 1e-16);
+    assert!((baseline.score - 0.999366486129688).abs() < 1e-15);
+    assert_eq!(baseline.cost_name.as_deref(), Some("MSE"));
+    assert_eq!(baseline.gpu_backend.as_deref(), Some("cpu-fallback"));
+}

@@ -1,0 +1,18 @@
+{
+  "baseline": {
+    "score": 0.999366486129688,
+    "error": 0.000633332126869237,
+    "complexityPenalty": 1.8174344272318114e-7,
+    "recordCount": 4096,
+    "hiddenNeurons": 1,
+    "synapseCount": 2,
+    "forwardOnly": true,
+    "trainingReadBackend": "native_pipelined",
+    "gpuBackend": "cpu-fallback",
+    "readBufLen": 2097144,
+    "activationThreads": 6,
+    "timeTaken": 0.001171875,
+    "compileTimeSecs": 0.000040084,
+    "costName": "MSE"
+  }
+}

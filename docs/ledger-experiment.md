@@ -250,3 +250,24 @@ negative result is established. The public availability record is
 Private data, actual histories and operational integration remain outside this
 public repository. Representative paired validation and the maintenance verdict
 remain part of the same issue.
+
+The archived [smoke manifest](experiments/ledger-140-smoke-manifest.json),
+[paired results](experiments/ledger-140-smoke-results.json), and
+[execution metadata](experiments/ledger-140-smoke-execution.json) record a separate
+native-scorer execution. It completed four sample-seed pairs with no operational
+failures. Across those pairs, ledger replay avoided four duplicate screen failures,
+used 36 scorer calls versus control's 16, and confirmed the same enhancement on the
+target and both synthetic peers. Full target coverage was 8/16 ledger attempts and
+16/16 control attempts; workflow coverage was complete in both arms. The four
+transferable-win counts concern the same hand-built patch, not four distinct
+scientific discoveries.
+
+Ledger replay performed more scored-record work (202,752 versus 131,072). Its
+recorded rate difference interval was negative on these inputs, while its locked
+smoke decision remained `inconclusive`. The complete run command took about 5.60 s,
+excluding separately recorded preparation and freeze. These are dev-build timings
+on a shared parallel host, with fixed parents and patches; they are neither a
+representative negative result nor evidence of an optimisation benefit. The
+recorded native response in `rebase/tests/fixtures/ledger-scorer-output.json` comes
+from the scorer source commit in the execution metadata, using the generated
+parent-0 as `baseline` and the full 4,096-record corpus.
