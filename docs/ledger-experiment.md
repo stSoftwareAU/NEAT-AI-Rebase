@@ -108,7 +108,9 @@ A draft has this shape (paths name locally supplied inputs):
 These example numbers are **not calibrated recommendations**. `scorerArgs` is
 restricted to `--gpu=off` and `--cost=MSE`, preventing flags from silently
 turning full confirmation into sampled scoring. No environment-dependent GPU
-configuration should be used for the comparison.
+configuration should be used for the comparison. The scorer receives a cleared
+environment with GPU disabled and activation, file-read and Rayon thread counts
+fixed to one; these settings are stored in the manifest.
 
 A provenance file contains `completeToRoot: true`,
 `establishedBeforeValidation: true`, a non-empty `source` identifying the
@@ -218,6 +220,26 @@ runs meeting `minimumPairedRuns`, the lower interval exceeding the absolute
 returns `remove`. Other outcomes, including `evidenceClass: smoke`, are
 `inconclusive`. A `remove` result calls for deleting optional policy mechanisms
 before claiming the experiment complete; the harness does not modify its own code.
+
+## Reproducible smoke execution
+
+The fixture generator reuses the existing creature and enhancement constructors.
+It creates four paired sample-seed runs over 4,096 records, two hand-built patch
+payloads repeated in a fixed stream, and three hand-built receiving creatures.
+The root-to-parent receipts describe a synthetic weight change, not independent
+evolution. Calibration settings are fixed smoke values with no study behind them.
+`evidenceClass: smoke` keeps the maintenance decision inconclusive.
+
+```bash
+cargo build --locked --example ledger_experiment
+./target/debug/examples/ledger_experiment prepare-smoke /tmp/ledger-smoke /path/to/rust_scorer
+./target/debug/examples/ledger_experiment freeze /tmp/ledger-smoke/draft.json /tmp/ledger-smoke/manifest.json
+timeout 180 ./target/debug/examples/ledger_experiment run /tmp/ledger-smoke/manifest.json /tmp/ledger-smoke/run
+```
+
+The preparation directory must not already exist. Adjust the executable path for
+`CARGO_TARGET_DIR`. Rerunning `run` against the same completed directory verifies
+inputs and returns its saved results without another scorer call.
 
 ## Current evidence and coverage
 

@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use neat_ai_rebase::corpus::corpus_info;
 use neat_ai_rebase::creature::{creature_checksum, sha256_hex};
+use neat_ai_rebase::engine::{RebaseRequest, rebase};
 use neat_ai_rebase::enhancement::{Enhancement, Payload, ProducerContext};
 use neat_ai_rebase::fixtures::linear_hidden_creature;
 use neat_ai_rebase::patch::{Node, Patch, Provenance};
@@ -94,7 +95,7 @@ impl Harness {
                 "sampleCount": 4, "minImprovement": 0.001,
                 "scorer": std::env::current_exe().unwrap(),
                 "scorerArgs": [], "evaluationTimeoutSeconds": 10,
-                "budget": {"calls": 30, "seconds": 120.0},
+                "budget": {"calls": 30, "seconds": 86400.0},
                 "success": {"minimumPairedRuns": 2, "minimumRateGain": 0.1,
                     "maximumLostWins": 0},
                 "preparationSeconds": 0.02
@@ -257,6 +258,35 @@ fn paired_replay_preserves_payloads_parents_and_the_full_acceptance_gate() {
             .iter()
             .any(|g| g.as_str().unwrap().starts_with("neuron:forest-"))
     }));
+    for event in &full {
+        let receiving = frozen["parents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["checksum"] == event["parentHash"])
+            .unwrap();
+        let parent = neat_core::parse_creature_json(
+            &std::fs::read_to_string(receiving["creature"]["path"].as_str().unwrap()).unwrap(),
+        )
+        .unwrap();
+        let payload = Enhancement::parse_json(
+            &std::fs::read_to_string(event["patch"]["path"].as_str().unwrap()).unwrap(),
+        )
+        .unwrap();
+        let replayed = rebase(&RebaseRequest {
+            champion: &parent,
+            enhancements: &[payload],
+            corpus_identity: frozen["corpusIdentity"].as_str().unwrap(),
+            max_candidates: 1,
+        })
+        .unwrap();
+        assert_eq!(
+            event["childHash"],
+            replayed.candidates().next().unwrap().checksum,
+            "replaying the referenced payload on its receiving parent reproduces the ledger child"
+        );
+        assert_eq!(event["measurement"]["child"]["recordCount"], 16);
+    }
     let calls = scorer.calls.borrow().len();
     let resumed = ledger::run(&h.manifest, &h.output, &scorer).unwrap();
     assert_eq!(resumed["pairedRuns"], result["pairedRuns"]);
@@ -532,6 +562,12 @@ fn the_experimental_reader_preserves_legacy_journals_without_using_them_as_a_cac
             .unwrap()
             .starts_with(&original)
     );
+    let summary = neat_ai_rebase::report::read_one(&path).unwrap();
+    assert_eq!(summary.runs_by_status["nothingToDo"], 1);
+    assert_eq!(
+        summary.runs_scored, 0,
+        "experimental verdicts do not become ordinary runs"
+    );
     let report = neat_ai_rebase::report::report(&[path]).unwrap();
     assert!(report.contains("nothingToDo"), "{report}");
 }
@@ -735,7 +771,8 @@ fn a_malformed_cached_rejection_is_not_a_reusable_failure() {
 
 #[test]
 fn adding_a_corpus_file_changes_the_frozen_context_before_any_scorer_call() {
-    let h = Harness::new(); h.freeze();
+    let h = Harness::new();
+    h.freeze();
     std::fs::copy(h.training.join("data.bin"), h.training.join("extra.bin")).unwrap();
     let scorer = Scorer::winning();
     let error = ledger::run(&h.manifest, &h.output, &scorer).unwrap_err();

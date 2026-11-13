@@ -122,8 +122,8 @@ pub(super) fn summarise(manifest: &Manifest, hash: &str, ledger: &Ledger) -> Val
     let ci = interval(&deltas);
     let complete = pairs.iter().all(|p| {
         ["control", "ledger"].iter().all(|a| {
-                p[a]["coverage"] == 1.0
-                    && p[a]["budgetOverrunSeconds"] == 0.0
+            p[a]["coverage"] == 1.0
+                && p[a]["budgetOverrunSeconds"] == 0.0
                 && p[a]["operationalFailures"] == 0
                 && p[a]["interruptedEvaluations"] == 0
         })

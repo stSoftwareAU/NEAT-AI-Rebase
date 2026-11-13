@@ -78,7 +78,7 @@ struct Calibration {
     seconds: f64,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct History {
     pub complete_to_root: bool,
@@ -532,12 +532,45 @@ impl Manifest {
         for parent in &self.parents {
             parent.creature.verify()?;
             parent.provenance.verify()?;
+            let original: History = read_json(&parent.provenance.path)?;
+            if parent.history != original {
+                return Err("frozen history differs from its provenance artifact".into());
+            }
         }
         for patch in &self.patches {
             patch.verify()?;
         }
-        for corpus in self.corpus.iter().chain(&self.calibration_corpus) {
-            corpus.artifact.verify()?;
+        let parent = self.parent(0)?;
+        validate_source_creature(&parent).map_err(|e| e.to_string())?;
+        let width = TrainingDataConfig::new(parent.input, parent.output).bytes_per_record() as u64;
+        for (directory, files) in [
+            (&self.protocol.training, &self.corpus),
+            (
+                &self.protocol.calibration_training,
+                &self.calibration_corpus,
+            ),
+        ] {
+            let actual: BTreeSet<PathBuf> = find_bin_files(directory)
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .map(|path| path.canonicalize().map_err(|e| e.to_string()))
+                .collect::<Result<_, _>>()?;
+            let expected: BTreeSet<PathBuf> = files
+                .iter()
+                .map(|file| file.artifact.path.clone())
+                .collect();
+            if actual != expected {
+                return Err("corpus membership changed after freeze".into());
+            }
+            for file in files {
+                file.artifact.verify()?;
+                let bytes = std::fs::metadata(&file.artifact.path)
+                    .map_err(|e| e.to_string())?
+                    .len();
+                if file.records.checked_mul(width) != Some(bytes) {
+                    return Err("frozen corpus record count differs from its bytes".into());
+                }
+            }
         }
         Ok(())
     }

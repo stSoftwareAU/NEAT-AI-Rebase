@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "issue": 140,
+  "researchVersion": "2610.05950v1",
+  "researchTextSha256": "bc492f7ed3a83a12ba2f610817ab1e7957615cfb730ae195217d2a4ad8836f2e",
+  "checksumScope": "tool-extracted full paper body; not original HTML or PDF bytes",
+  "representativeStudy": {
+    "status": "notRun",
+    "reason": "No representative corpus with independently established receiving-lineage histories was supplied or found in this checkout. Hand-built fixtures cannot establish the optimisation hypothesis.",
+    "pairedRuns": [],
+    "coverage": 0,
+    "duplicateFailuresAvoided": null,
+    "transferableWins": null,
+    "improvementPerEvaluationHour": null,
+    "uncertaintyInterval": null,
+    "maintenanceDecision": "inconclusive",
+    "benefitEstablished": false
+  }
+}
