@@ -22,6 +22,7 @@ pub(super) const METHOD_TEXT_SHA256: &str =
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Draft {
     pub version: u32,
+    pub evidence_class: EvidenceClass,
     pub training: PathBuf,
     pub calibration_training: PathBuf,
     pub calibration_report: PathBuf,
@@ -36,6 +37,13 @@ pub(super) struct Draft {
     pub budget: Budget,
     pub success: Success,
     pub preparation_seconds: f64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum EvidenceClass {
+    Smoke,
+    Representative,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

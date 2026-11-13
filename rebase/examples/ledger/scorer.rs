@@ -78,7 +78,7 @@ impl neat_ai_rebase::scorer::DirectoryScorer for BoundedScorer {
             return Err(ScorerError::NotAuthoritative(mode.label()));
         }
         let out = std::process::Command::new(&self.timeout)
-            .args(["--signal=TERM", "--kill-after=5", &self.seconds.to_string()])
+            .args(["--signal=KILL", &self.seconds.to_string()])
             .arg(&self.binary)
             .args(&self.args)
             .arg(creatures)

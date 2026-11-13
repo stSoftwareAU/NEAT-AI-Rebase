@@ -1,7 +1,7 @@
 //! Paired replay: fixed parents and candidate order; no population publication.
 
 use std::cell::Cell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
 use std::path::Path;
 use std::time::Instant;
@@ -9,7 +9,7 @@ use std::time::Instant;
 use neat_ai_rebase::creature::sha256_hex;
 use neat_ai_rebase::engine::{RebaseOutcome, RebaseRequest, rebase};
 use neat_ai_rebase::enhancement::Enhancement;
-use neat_ai_rebase::journal::{Journal, Record, ScreenVerdict};
+use neat_ai_rebase::journal::{Journal, ScreenVerdict};
 use neat_ai_rebase::scorer::{
     DirectoryScorer, ScoreResult, ScorerError, ScorerMode, check_finite, judge, stage,
 };
@@ -73,12 +73,27 @@ pub(super) struct Event {
 pub(super) struct Ledger {
     journal: Journal,
     pub events: Vec<Event>,
+    pub costs: Vec<Cost>,
     previous_write_seconds: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct Cost {
+    kind: String,
+    manifest: String,
+    pub seed: u64,
+    pub arm: String,
+    pub component: String,
+    pub seconds: f64,
+    first_event: usize,
+    last_event: usize,
 }
 
 impl Ledger {
     fn open(path: &Path, manifest: &str) -> Result<Self, String> {
         let mut events = Vec::new();
+        let mut costs = Vec::new();
         if path.exists() {
             let text = std::fs::read_to_string(path)
                 .map_err(|e| format!("ledger {}: {e}", path.display()))?;
@@ -92,6 +107,22 @@ impl Ledger {
                     Some("experiment") => {
                         if value["version"].as_u64() != Some(u64::from(VERSION)) {
                             return Err("unsupported experiment version in ledger".into());
+                        }
+                        if value["event"]["kind"] == "cost" {
+                            let cost: Cost = serde_json::from_value(value["event"].clone())
+                                .map_err(|e| format!("ledger cost at line {}: {e}", line + 1))?;
+                            if cost.manifest != manifest
+                                || !cost.seconds.is_finite()
+                                || cost.seconds < 0.0
+                                || cost.first_event > cost.last_event
+                                || cost.last_event > events.len()
+                            {
+                                return Err(
+                                    "invalid ledger cost or frozen manifest identity".into()
+                                );
+                            }
+                            costs.push(cost);
+                            continue;
                         }
                         let event: Event = serde_json::from_value(value["event"].clone())
                             .map_err(|e| format!("ledger line {}: {e}", line + 1))?;
@@ -112,18 +143,45 @@ impl Ledger {
         Ok(Self {
             journal: Journal::new(path),
             events,
+            costs,
             previous_write_seconds: 0.0,
         })
+    }
+
+    fn cost(
+        &mut self,
+        manifest: &str,
+        seed: u64,
+        arm: &str,
+        component: &str,
+        seconds: f64,
+        first_event: usize,
+    ) -> Result<(), String> {
+        let cost = Cost {
+            kind: "cost".into(),
+            manifest: manifest.into(),
+            seed,
+            arm: arm.into(),
+            component: component.into(),
+            seconds,
+            first_event,
+            last_event: self.events.len(),
+        };
+        self.journal
+            .append_entry(&json!({"record":"experiment", "version":VERSION, "event":cost}))
+            .map_err(|e| format!("ledger cost append: {e}"))?;
+        File::open(self.journal.path())
+            .and_then(|f| f.sync_data())
+            .map_err(|e| format!("ledger cost sync: {e}"))?;
+        self.costs.push(cost);
+        Ok(())
     }
 
     fn push(&mut self, mut event: Event) -> Result<(), String> {
         event.ledger_seconds = self.previous_write_seconds;
         let started = Instant::now();
         self.journal
-            .append(&Record::Experiment {
-                version: VERSION,
-                event: serde_json::to_value(&event).map_err(|e| e.to_string())?,
-            })
+            .append_entry(&json!({"record": "experiment", "version": VERSION, "event": event}))
             .map_err(|e| format!("ledger append: {e}"))?;
         File::open(self.journal.path())
             .and_then(|f| f.sync_data())
@@ -141,18 +199,35 @@ impl Ledger {
     }
 
     pub fn spent(&self, seed: u64, arm: &str, timeout: u32) -> f64 {
-        self.events
+        let costs: Vec<_> = self
+            .costs
             .iter()
-            .filter(|e| e.seed == seed && e.arm == arm)
-            .map(|e| {
-                let pending = e.state == State::Started
-                    && !self
-                        .events
-                        .iter()
-                        .any(|r| r.id == e.id && r.state != State::Started);
-                e.seconds + e.ledger_seconds + if pending { f64::from(timeout) } else { 0.0 }
-            })
-            .sum()
+            .filter(|c| c.seed == seed && c.arm == arm)
+            .collect();
+        let measured: f64 = costs.iter().map(|c| c.seconds).sum();
+        let finished: BTreeSet<usize> = self
+            .events
+            .iter()
+            .filter(|e| e.state != State::Started)
+            .map(|e| e.id)
+            .collect();
+        measured
+            + self
+                .events
+                .iter()
+                .enumerate()
+                .filter(|(index, e)| {
+                    e.seed == seed
+                        && e.arm == arm
+                        && !costs.iter().any(|c| {
+                            c.component == "arm" && *index >= c.first_event && *index < c.last_event
+                        })
+                })
+                .map(|(_, e)| {
+                    let pending = e.state == State::Started && !finished.contains(&e.id);
+                    e.seconds + e.ledger_seconds + if pending { f64::from(timeout) } else { 0.0 }
+                })
+                .sum::<f64>()
     }
 
     fn completed(&self, seed: u64, arm: &str, attempt: usize) -> bool {
@@ -241,6 +316,8 @@ struct Attempt<'a> {
     patch: &'a Artifact,
     scorer: &'a dyn DirectoryScorer,
     output: &'a Path,
+    phase_started: &'a Instant,
+    prior_seconds: f64,
 }
 
 impl Attempt<'_> {
@@ -337,7 +414,8 @@ impl Attempt<'_> {
             + protocol.preparation_seconds)
             / (2.0 * protocol.seeds.len() as f64);
         if ledger.calls(self.seed, self.arm) >= protocol.budget.calls
-            || ledger.spent(self.seed, self.arm, protocol.evaluation_timeout_seconds)
+            || self.prior_seconds
+                + self.phase_started.elapsed().as_secs_f64()
                 + shared
                 + f64::from(protocol.evaluation_timeout_seconds)
                 > protocol.budget.seconds
@@ -541,40 +619,80 @@ pub(crate) fn run(
         return Ok(result);
     }
     let preparation_seconds = preparation.elapsed().as_secs_f64();
-    let mut overhead = 0.0;
+    let shares = 2.0 * manifest.protocol.seeds.len() as f64;
     for (seed_index, seed) in manifest.protocol.seeds.iter().enumerate() {
-        let sample_started = Instant::now();
-        let sample = manifest.materialise(seed_index, output)?;
-        overhead += sample_started.elapsed().as_secs_f64();
         let arms = if seed_index % 2 == 0 {
             ["control", "ledger"]
         } else {
             ["ledger", "control"]
         };
         for arm in arms {
-            for (index, patch) in manifest.patches.iter().enumerate() {
-                if ledger.completed(*seed, arm, index) {
-                    continue;
+            ledger.cost(
+                &manifest_hash,
+                *seed,
+                arm,
+                "preparation",
+                preparation_seconds / shares,
+                ledger.events.len(),
+            )?;
+            let first_event = ledger.events.len();
+            let phase_started = Instant::now();
+            let prior_seconds =
+                ledger.spent(*seed, arm, manifest.protocol.evaluation_timeout_seconds);
+            let phase_result = (|| -> Result<(), String> {
+                if (0..manifest.patches.len()).all(|index| ledger.completed(*seed, arm, index)) {
+                    return Ok(());
                 }
-                let enhancement = Enhancement::parse_json(
-                    &std::fs::read_to_string(&patch.path).map_err(|e| e.to_string())?,
-                )
-                .map_err(|e| e.to_string())?;
-                let attempt = Attempt {
-                    manifest: &manifest,
-                    manifest_hash: &manifest_hash,
-                    seed: *seed,
-                    arm,
-                    index,
-                    enhancement: &enhancement,
-                    patch,
-                    scorer,
-                    output,
+                let sample = if arm == "ledger" {
+                    Some(manifest.materialise(seed_index, output)?)
+                } else {
+                    None
                 };
-                if !attempt.execute(sample.path(), &mut ledger)? {
-                    break;
+                let training = sample
+                    .as_ref()
+                    .map_or(manifest.protocol.training.as_path(), |s| s.path());
+                for (index, patch) in manifest.patches.iter().enumerate() {
+                    if ledger.completed(*seed, arm, index) {
+                        continue;
+                    }
+                    let enhancement = Enhancement::parse_json(
+                        &std::fs::read_to_string(&patch.path).map_err(|e| e.to_string())?,
+                    )
+                    .map_err(|e| e.to_string())?;
+                    let attempt = Attempt {
+                        manifest: &manifest,
+                        manifest_hash: &manifest_hash,
+                        seed: *seed,
+                        arm,
+                        index,
+                        enhancement: &enhancement,
+                        patch,
+                        scorer,
+                        output,
+                        phase_started: &phase_started,
+                        prior_seconds,
+                    };
+                    if !attempt.execute(training, &mut ledger)? {
+                        break;
+                    }
                 }
+                Ok(())
+            })();
+            let account = ledger.cost(
+                &manifest_hash,
+                *seed,
+                arm,
+                "arm",
+                phase_started.elapsed().as_secs_f64(),
+                first_event,
+            );
+            if let Err(error) = phase_result {
+                return Err(match account {
+                    Ok(()) => error,
+                    Err(cost_error) => format!("{error}; {cost_error}"),
+                });
             }
+            account?;
         }
     }
     let verification = Instant::now();
@@ -582,14 +700,20 @@ pub(crate) fn run(
     if hash_file(manifest_path)? != manifest_hash {
         return Err("manifest changed during validation".into());
     }
-    overhead += verification.elapsed().as_secs_f64();
-    let result = results::summarise(
-        &manifest,
-        &manifest_hash,
-        &ledger,
-        preparation_seconds + overhead,
-        ledger.previous_write_seconds,
-    );
+    let verification_seconds = verification.elapsed().as_secs_f64();
+    for seed in &manifest.protocol.seeds {
+        for arm in ["control", "ledger"] {
+            ledger.cost(
+                &manifest_hash,
+                *seed,
+                arm,
+                "verification",
+                verification_seconds / shares,
+                ledger.events.len(),
+            )?;
+        }
+    }
+    let result = results::summarise(&manifest, &manifest_hash, &ledger);
     write_new(&result_path, &result)?;
     Ok(result)
 }

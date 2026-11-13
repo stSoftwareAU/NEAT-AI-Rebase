@@ -132,14 +132,6 @@ pub struct ScreenedEnhancement {
     tag = "record"
 )]
 pub enum Record {
-    /// Opt-in experiment event, kept separate from ordinary run records.
-    /// The experiment owns its versioned event schema and replay reader.
-    Experiment {
-        /// Experimental schema version; independent of enhancement versions.
-        version: u32,
-        /// Versioned experiment payload, including unsuccessful evaluations.
-        event: serde_json::Value,
-    },
     /// What the run was asked to do.
     Opening {
         /// Producer of the bundle.
@@ -252,12 +244,24 @@ impl Journal {
     /// failure is reported, never swallowed: an unattended run whose journal is
     /// silently missing is an unattended run nobody can debug.
     pub fn append(&self, record: &Record) -> Result<(), String> {
+        self.append_entry(record)
+    }
+
+    /// Append a serialisable entry using the same append-only writer.
+    ///
+    /// Opt-in harnesses can own a versioned envelope without changing the
+    /// ordinary [`Record`] contract. Keep those entries in a separate journal.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when serialisation, opening or writing fails.
+    pub fn append_entry(&self, entry: &impl Serialize) -> Result<(), String> {
         if let Some(parent) = self.path.parent()
             && !parent.as_os_str().is_empty()
         {
             std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
-        let line = serde_json::to_string(record).map_err(|e| e.to_string())?;
+        let line = serde_json::to_string(entry).map_err(|e| e.to_string())?;
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)

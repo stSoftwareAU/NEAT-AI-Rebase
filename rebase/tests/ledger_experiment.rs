@@ -88,7 +88,7 @@ impl Harness {
         write_json(
             &draft,
             &json!({
-                "version": 1, "training": training, "calibrationTraining": calibration,
+            "version": 1, "evidenceClass": "smoke", "training": training, "calibrationTraining": calibration,
                 "calibrationReport": report, "parents": parents,
                 "patches": [&patch, &patch], "seeds": [41, 42],
                 "sampleCount": 4, "minImprovement": 0.001,
@@ -570,4 +570,134 @@ fn calibration_overlap_and_replacing_a_frozen_manifest_are_refused() {
             .contains("exists")
     );
     assert_eq!(std::fs::read(&h.manifest).unwrap(), before);
+}
+
+struct BrokenScorer<'a> {
+    inner: &'a Scorer,
+    fault: &'a str,
+}
+
+impl DirectoryScorer for BrokenScorer<'_> {
+    fn score_directory(
+        &self,
+        creatures: &Path,
+        training: &Path,
+        mode: ScorerMode,
+    ) -> Result<BTreeMap<String, ScoreResult>, ScorerError> {
+        let mut results = self.inner.score_directory(creatures, training, mode)?;
+        match self.fault {
+            "baseline" => {
+                results.remove("baseline");
+            }
+            "candidate" => {
+                results.remove("single-00");
+            }
+            "sampled" => {
+                results.get_mut("single-00").unwrap().sample_rate = Some(0.5);
+            }
+            "nonfinite" => {
+                results.get_mut("single-00").unwrap().score = f64::NAN;
+            }
+            "complexity" => {
+                results.get_mut("single-00").unwrap().complexity_penalty = f64::INFINITY;
+            }
+            "records" => {
+                results.get_mut("single-00").unwrap().record_count = 1;
+            }
+            other => panic!("unexpected test fault: {other}"),
+        }
+        Ok(results)
+    }
+    fn identity(&self) -> String {
+        self.inner.identity()
+    }
+}
+
+#[test]
+fn incomplete_or_invalid_full_results_never_pass_the_real_acceptance_gate() {
+    for (fault, cause) in [
+        ("baseline", "no `baseline`"),
+        ("candidate", "no entry for candidate"),
+        ("sampled", "sampled measurement"),
+        ("nonfinite", "non-finite result"),
+        ("complexity", "non-finite or sampled measurement"),
+        ("records", "incomplete"),
+    ] {
+        let h = Harness::new();
+        h.freeze();
+        let inner = Scorer::winning();
+        let error = ledger::run(
+            &h.manifest,
+            &h.output,
+            &BrokenScorer {
+                inner: &inner,
+                fault,
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains(cause), "{fault}: {error}");
+        let events = h.events();
+        let failure = events
+            .iter()
+            .find(|e| e["state"] == "operationalFailure")
+            .unwrap();
+        assert_eq!(
+            failure["stage"], "full",
+            "the fixture must reach the authoritative gate"
+        );
+        assert!(failure["failure"].as_str().unwrap().contains(cause));
+        assert!(
+            !events
+                .iter()
+                .any(|e| e["stage"] == "complete" && e["state"] == "accepted")
+        );
+        let recovered = ledger::run(&h.manifest, &h.output, &inner).unwrap();
+        assert_eq!(
+            recovered["pairedRuns"][0]["control"]["wins"], 1,
+            "the same input with just the scorer fault removed must be accepted"
+        );
+    }
+}
+
+#[test]
+fn an_interrupted_call_is_charged_and_retried_while_a_partial_line_is_refused() {
+    let h = Harness::new();
+    h.freeze();
+    let scorer = Scorer {
+        fail_once: RefCell::new(true),
+        ..Scorer::winning()
+    };
+    assert!(
+        ledger::run(&h.manifest, &h.output, &scorer)
+            .unwrap_err()
+            .contains("missing error field")
+    );
+    let path = h.output.join("ledger-v1.jsonl");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let mut lines: Vec<&str> = text.lines().collect();
+    // Simulate a process killed after dispatch, before the failure and accounting writes.
+    lines.retain(|line| {
+        let e: Value = serde_json::from_str(line).unwrap();
+        e["event"]["state"] != "operationalFailure" && e["event"]["component"] != "arm"
+    });
+    std::fs::write(&path, format!("{}\n", lines.join("\n"))).unwrap();
+    let result = ledger::run(&h.manifest, &h.output, &scorer).unwrap();
+    assert_eq!(result["pairedRuns"][0]["control"]["calls"], 3);
+    assert_eq!(
+        result["pairedRuns"][0]["control"]["interruptedEvaluations"],
+        1
+    );
+    assert_eq!(result["maintenanceDecision"], "inconclusive");
+    let h = Harness::new();
+    h.freeze();
+    std::fs::create_dir_all(&h.output).unwrap();
+    std::fs::write(
+        h.output.join("ledger-v1.jsonl"),
+        "{\"record\":\"experiment\"",
+    )
+    .unwrap();
+    let inner = Scorer::winning();
+    let error = ledger::run(&h.manifest, &h.output, &inner).unwrap_err();
+    assert!(error.contains("incomplete final line"), "{error}");
+    assert!(inner.calls.borrow().is_empty());
 }

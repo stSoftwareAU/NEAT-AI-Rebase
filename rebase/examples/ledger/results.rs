@@ -1,6 +1,6 @@
 //! Descriptive paired results; validation never feeds back into candidate selection.
 
-use super::manifest::{Manifest, VERSION};
+use super::manifest::{EvidenceClass, Manifest, VERSION};
 use super::runner::{Event, Ledger, State};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -81,18 +81,10 @@ fn interval(deltas: &[f64]) -> Option<[f64; 2]> {
     Some([means[49], means[1949]])
 }
 
-pub(super) fn summarise(
-    manifest: &Manifest,
-    hash: &str,
-    ledger: &Ledger,
-    preparation: f64,
-    final_write: f64,
-) -> Value {
+pub(super) fn summarise(manifest: &Manifest, hash: &str, ledger: &Ledger) -> Value {
     let common = (manifest.freeze_seconds
         + manifest.calibration_seconds
-        + manifest.protocol.preparation_seconds
-        + preparation
-        + final_write)
+        + manifest.protocol.preparation_seconds)
         / (2.0 * manifest.protocol.seeds.len() as f64);
     let pairs: Vec<Value> = manifest
         .protocol
@@ -135,7 +127,10 @@ pub(super) fn summarise(
     });
     let lost: u64 = pairs.iter().map(|p| p["lostWins"].as_u64().unwrap()).sum();
     let enough = deltas.len() >= manifest.protocol.success.minimum_paired_runs;
-    let decision = if !complete || !enough {
+    let decision = if !complete
+        || !enough
+        || manifest.protocol.evidence_class != EvidenceClass::Representative
+    {
         "inconclusive"
     } else if lost > manifest.protocol.success.maximum_lost_wins as u64 {
         "remove"
@@ -150,7 +145,8 @@ pub(super) fn summarise(
         "status": if complete { "complete" } else { "incomplete" },
         "maintenanceDecision": decision, "rateDelta95PercentInterval": ci,
         "uncertainty": "paired percentile bootstrap, 2000 resamples, seed 0x140; descriptive across fixed-input sample seeds",
-        "representativeBenefitEstablished": false,
-        "timingBoundary": "freeze, declared preparation/calibration, input verification, sample preparation, replay, scorer and ledger writes; excludes final results serialisation",
+        "evidenceClass": manifest.protocol.evidence_class,
+        "representativeBenefitEstablished": decision == "retain",
+        "timingBoundary": "freeze, declared preparation/calibration, input verification and per-arm wall time including sample preparation, replay, scorer and evaluation-ledger writes; excludes accounting-record writes and final results serialisation",
     })
 }
