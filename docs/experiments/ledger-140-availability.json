@@ -5,15 +5,240 @@
   "researchTextSha256": "bc492f7ed3a83a12ba2f610817ab1e7957615cfb730ae195217d2a4ad8836f2e",
   "checksumScope": "tool-extracted full paper body; not original HTML or PDF bytes",
   "representativeStudy": {
-    "status": "notRun",
-    "reason": "No representative corpus with independently established receiving-lineage histories was supplied or found in this checkout. Hand-built fixtures cannot establish the optimisation hypothesis.",
-    "pairedRuns": [],
-    "coverage": 0,
-    "duplicateFailuresAvoided": null,
-    "transferableWins": null,
-    "improvementPerEvaluationHour": null,
-    "uncertaintyInterval": null,
-    "maintenanceDecision": "inconclusive",
-    "benefitEstablished": false
+    "status": "complete",
+    "scope": "Bounded real-data study: one public regression dataset, three independent custom discovery runs, eight paired sample seeds per run",
+    "inputAvailability": "No usable corpus with independent ancestry archives in inspected checkout/working artefact locations; genuine independent searches were produced instead",
+    "resultsFile": "ledger-140-real-data-results.json",
+    "registeredSourceCommit": "7b26468e8e70af8597811bef14d6fe1a26e5f683",
+    "host": "vibe-coder-65826",
+    "windowStart": "2026-11-14T02:47:24.510680+00:00",
+    "validationCompletedAt": "2026-11-14T02:49:45.890989+00:00",
+    "independentDiscoveryRuns": 3,
+    "independentLineages": 12,
+    "verifiedAcceptedAncestryEdges": 72,
+    "pairedRuns": [
+      {
+        "run": 1,
+        "seed": 41,
+        "lostWins": 3
+      },
+      {
+        "run": 1,
+        "seed": 42,
+        "lostWins": 3
+      },
+      {
+        "run": 1,
+        "seed": 43,
+        "lostWins": 3
+      },
+      {
+        "run": 1,
+        "seed": 44,
+        "lostWins": 4
+      },
+      {
+        "run": 1,
+        "seed": 45,
+        "lostWins": 3
+      },
+      {
+        "run": 1,
+        "seed": 46,
+        "lostWins": 3
+      },
+      {
+        "run": 1,
+        "seed": 47,
+        "lostWins": 3
+      },
+      {
+        "run": 1,
+        "seed": 48,
+        "lostWins": 3
+      },
+      {
+        "run": 2,
+        "seed": 41,
+        "lostWins": 0
+      },
+      {
+        "run": 2,
+        "seed": 42,
+        "lostWins": 0
+      },
+      {
+        "run": 2,
+        "seed": 43,
+        "lostWins": 0
+      },
+      {
+        "run": 2,
+        "seed": 44,
+        "lostWins": 0
+      },
+      {
+        "run": 2,
+        "seed": 45,
+        "lostWins": 0
+      },
+      {
+        "run": 2,
+        "seed": 46,
+        "lostWins": 0
+      },
+      {
+        "run": 2,
+        "seed": 47,
+        "lostWins": 1
+      },
+      {
+        "run": 2,
+        "seed": 48,
+        "lostWins": 0
+      },
+      {
+        "run": 3,
+        "seed": 41,
+        "lostWins": 2
+      },
+      {
+        "run": 3,
+        "seed": 42,
+        "lostWins": 2
+      },
+      {
+        "run": 3,
+        "seed": 43,
+        "lostWins": 2
+      },
+      {
+        "run": 3,
+        "seed": 44,
+        "lostWins": 2
+      },
+      {
+        "run": 3,
+        "seed": 45,
+        "lostWins": 2
+      },
+      {
+        "run": 3,
+        "seed": 46,
+        "lostWins": 2
+      },
+      {
+        "run": 3,
+        "seed": 47,
+        "lostWins": 2
+      },
+      {
+        "run": 3,
+        "seed": 48,
+        "lostWins": 2
+      }
+    ],
+    "coverage": 1.0,
+    "targetCoverage": {
+      "control": 1.0,
+      "ledger": 0.024305555555555556
+    },
+    "duplicateFailuresAvoided": 957,
+    "transferableWins": {
+      "pairedDistinctObservations": 14,
+      "distinctAcrossDiscoveryRuns": 2
+    },
+    "lostWins": 42,
+    "operationalFailures": 0,
+    "interruptedEvaluations": 0,
+    "improvementPerEvaluationHour": {
+      "control": [
+        7.028430504596858,
+        7.060596443488524,
+        7.060564295612788,
+        7.058729054727445,
+        7.057822318774298,
+        7.051066635894923,
+        7.059305614954819,
+        7.056832252593035,
+        5.927483606109687,
+        5.925320734273959,
+        5.925650567855903,
+        5.924736118463761,
+        5.92495332428653,
+        5.92424548789795,
+        5.922654368103756,
+        5.922860089748551,
+        4.658557754099586,
+        4.656630085429222,
+        4.653726463925209,
+        4.65569597145445,
+        4.655487045727806,
+        4.6549931981739565,
+        4.652418906665019,
+        4.654163181909709
+      ],
+      "ledger": [
+        3.8341002399734077,
+        3.899677610450295,
+        3.928561498297309,
+        null,
+        3.9242526086669103,
+        3.8879521694996324,
+        3.8730076522181687,
+        3.8671063219724617,
+        5.501379681908286,
+        5.470319090861586,
+        5.47145943643805,
+        5.5198313379071875,
+        5.491807663070062,
+        5.493076981964159,
+        null,
+        5.501436620582362,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    "uncertaintyInterval": {
+      "withinRun": "native paired percentile bootstrap, 2000 resamples; repeated sample seeds on fixed inputs",
+      "betweenIndependentRuns": "exact descriptive percentile bootstrap of independent-run means, inverse empirical CDF endpoints; one fixed dataset and only three discovery runs",
+      "lostWinMeanPerPairByRun": [
+        3.125,
+        0.125,
+        2
+      ],
+      "lostWinMean95PercentInterval": [
+        0.125,
+        3.125
+      ],
+      "outerInclusiveRateMeanByMeasuredRun": [
+        -3.1657085664052946,
+        -0.4322770165578068
+      ],
+      "outerInclusiveRateMean95PercentInterval": [
+        -3.1657085664052946,
+        -0.4322770165578068
+      ],
+      "rateRunsMeasured": 2,
+      "rateRunsPlanned": 3,
+      "missingRate": "Run 3 has no ledger full-target measurement; its rate is unknown and excluded, never imputed as zero"
+    },
+    "maintenanceDecision": "remove",
+    "action": "Removed optional sample/peer/cache runtime and its experiment-only fixtures; source remains at registered commit for reproduction",
+    "benefitEstablished": false,
+    "privacy": "Raw corpora, source receipts, model snapshots, path-bearing manifests and ledgers remain outside checkout; public report contains aggregate measurements and hash commitments",
+    "limitations": [
+      "Shared-host dev-build timings are indicative; removal has deterministic lost-win evidence in all three runs.",
+      "Single public dataset, shallow custom residual-stump searches; no production-fleet or cross-application generalisation.",
+      "Finite fixed stream with equal upper compute limits, not adaptive discovery at matched consumed compute.",
+      "Source envelopes carry neutral zero score claims; actual discovery measurements are in private source receipts.",
+      "Raw corpora, snapshots, receipts, path-bearing frozen manifests and ledgers remain outside the public checkout."
+    ]
   }
 }

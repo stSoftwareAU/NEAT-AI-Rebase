@@ -1,285 +1,253 @@
-# Replayable ledger experiment
+# Replayable ledger experiment: removal decision
 
-This opt-in harness compares replay policies. It does not change `neat_ai_rebase`,
-its default screening policy, enhancement identities, or population publication.
-A completed smoke run demonstrates execution, not an optimisation benefit.
+The registered real-data comparison returned **remove** in all three independent
+discovery runs. The optional fixed-sample/two-peer/cache runtime and its
+experiment-only tests have been removed. Ordinary replay, CLI screening,
+authoritative acceptance, immutable parents and journal formats retain their
+existing behaviour. No experiment policy was enabled by default or deployed.
 
-## Research pin and transfer limits
+## Research method and scope
 
 The full versioned [Population Evolution paper](https://arxiv.org/html/2610.05950v1)
-was reviewed, including §§2–5 and Appendices A–G. The paper shares executable
-interventions and their receiving-instance results. Its promotion gates require
-peer evidence, with additional intermediate gates in its decomposed track;
-that track withholds final-target results from proposals. Baseline calibration
-precedes discovery. Its reported complete discovery runs have limited replication.
+was pinned before the original implementation. Its reviewed tool-extracted UTF-8
+body has SHA-256 `bc492f7ed3a83a12ba2f610817ab1e7957615cfb730ae195217d2a4ad8836f2e`.
+This is not a checksum of the original HTML/PDF. The original extraction covered
+web-reader lines 124–1149, removed line-number prefixes, replaced numbered reader
+links with their labels, and joined lines with LF and a final LF. Direct downloads
+returned HTTP 403; no original-file checksum is claimed.
 
-The pin is `2610.05950v1`. SHA-256
-`bc492f7ed3a83a12ba2f610817ab1e7957615cfb730ae195217d2a4ad8836f2e`
-identifies the reviewed **tool-extracted UTF-8 body**, not the original HTML or
-PDF. Extraction used web-reader lines 124–1149 inclusive, discarded line-number prefixes and their following spaces, replaced `【number†label】` links with `label`, retained other characters,
-and joined lines with LF including a final LF. Direct downloads returned HTTP 403;
-no original-file checksum is claimed. The paper is not redistributed.
+The method's §§2.2–2.3 and Appendix B distinguish executable interventions from
+mechanism descriptions, retain weak peer results, and gate promotion on receiving
+instance results. Its decomposed track withholds full-target outcomes from
+proposals. Appendix A.7 calibrates references before discovery, while B.5 separates
+component searches from complete discovery runs and includes search/evaluation
+costs. These requirements informed the frozen comparison; its results are not a
+reproduction of the paper's adaptive LLM discovery or cross-scale retraining.
 
-Here the intervention is an existing v1 enhancement replayed by `rebase()` onto
-fixed NEAT-AI creatures. There is no LLM proposer, retraining, changing archive,
-or cross-scale training. The experiment tests a NEAT-AI transfer hypothesis;
-the paper's results do not establish that hypothesis.
-
-## Existing mechanisms and formats
-
-The harness calls `rebase()`, `DirectoryScorer`, `ScreenVerdict::classify`,
-`stage()`, `judge()`, and `Journal`. Full peer and target decisions go through
-`judge(ScorerMode::Full)`. The ordinary journal's `Record` enum and existing
-`append()` interface retain their contracts; `append_entry()` shares the writer
-with the separate experimental envelope.
-
-`PatchLog`, `PruneLog`, harvested enhancements, and `EnhancementBundle` already
-preserve executable accepted changes. This harness accepts **individual** v1
-enhancement files, including repeated paths; extract bundle members without
-changing their contents. An experiment attempt records receiving-parent rejection
-as well as acceptance. It does not reinterpret a producer's claimed improvement
-as an authoritative score.
-
-The NEAT-AI evaluation archive records fitness, descriptors, and parent UUIDs;
-its training-gain log records training events. Neither is a portable structural
-patch. Preserve those original archives as provenance evidence and file replayable
-payloads through this repository's enhancement format. Do not infer independent
-ancestry merely from different current creature hashes.
-
-## Freeze before validation
-
-Run from the checkout that builds the example. Paths in a draft are resolved
-against the invocation's working directory. Use a private directory outside the
-checkout for real corpora, receipts, frozen manifests, ledgers, and results.
-
-1. Establish independent lineage histories from existing run archives. Obtain
-   three receiving parents: target at index 0, two peers at indices 1 and 2.
-   Supply complete root-to-parent canonical SHA-256 ancestry lists and independently
-   established source references. The harness checks asserted histories for
-   overlaps and endpoints; it does **not** authenticate those source references
-   or reconstruct missing ancestry. A history assertion is not independent evidence.
-2. Use calibration records separate from validation to select `sampleCount` and
-   `minImprovement`. Save the measurements, selection rationale, and total calibration
-   cost in the calibration report. Freeze fixed seeds, candidate order, repetitions,
-   budgets, and maintenance criteria before validation. Record prior candidate
-   preparation/search time in `preparationSeconds`; zero means no such work occurred.
-3. Build once, freeze once, then run the same executable. Freeze refuses an existing
-   manifest. A protocol change requires a new manifest and a new output directory.
-
-```bash
-cargo build --locked --release --example ledger_experiment
-./target/release/examples/ledger_experiment freeze /private/draft.json /private/manifest.json
-timeout 900 ./target/release/examples/ledger_experiment run /private/manifest.json /private/run
-```
-
-Use the configured Cargo target directory when `CARGO_TARGET_DIR` is set. On
-macOS, `gtimeout` can bound the command. The harness requires `timeout` or
-`gtimeout` to bound each scorer invocation and kills its process group at the
-configured deadline. Standard input is disabled for scorer processes.
-
-A draft has this shape (paths name locally supplied inputs):
-
-```json
-{
-  "version": 1,
-  "evidenceClass": "representative",
-  "training": "/private/validation",
-  "calibrationTraining": "/private/calibration",
-  "calibrationReport": "/private/calibration-report.json",
-  "parents": [
-    {"creature": "/private/target.json", "provenance": "/private/target-history.json"},
-    {"creature": "/private/peer1.json", "provenance": "/private/peer1-history.json"},
-    {"creature": "/private/peer2.json", "provenance": "/private/peer2-history.json"}
-  ],
-  "patches": ["/private/patch1.json", "/private/patch2.json", "/private/patch1.json"],
-  "seeds": [41, 42, 43, 44, 45, 46, 47, 48],
-  "sampleCount": 4096,
-  "minImprovement": 0.00001,
-  "scorer": "/private/rust_scorer",
-  "scorerArgs": ["--gpu=off", "--cost=MSE"],
-  "evaluationTimeoutSeconds": 30,
-  "budget": {"calls": 100, "seconds": 600},
-  "success": {"minimumPairedRuns": 8, "minimumRateGain": 0.01, "maximumLostWins": 0},
-  "preparationSeconds": 0
-}
-```
-
-These example numbers are **not calibrated recommendations**. `scorerArgs` is
-restricted to `--gpu=off` and `--cost=MSE`, preventing flags from silently
-turning full confirmation into sampled scoring. No environment-dependent GPU
-configuration should be used for the comparison. The scorer receives a cleared
-environment with GPU disabled and activation, file-read and Rayon thread counts
-fixed to one; these settings are stored in the manifest.
-
-A provenance file contains `completeToRoot: true`,
-`establishedBeforeValidation: true`, a non-empty `source` identifying the
-independent evidence, the originating `seed`, and `ancestors`: the complete
-ordered canonical SHA-256 identities ending with the supplied parent's checksum.
-The three lists must be disjoint and each must have at least two entries.
-Keep the source evidence available; the frozen file pins the assertion's bytes.
-
-The calibration report contains `sampleCount`, `minImprovement`,
-`validationUsed: false`, a non-empty `rationale`, and measured `seconds`.
-It must agree with the draft. Retain the underlying calibration measurements
-beside the report. Freeze hashes every corpus byte, checks dimensions and record
-alignment, and refuses a byte-identical record shared by calibration and validation.
-Its full calibration-record hash set uses memory proportional to calibration size.
-
-The frozen manifest records the research pin, runner executable checksum, checkout
-revision and dirty state, dependency lock checksum, toolchain configuration,
-scorer executable checksum and arguments, corpus file hashes and conventional
-corpus identity, parents and histories, payload references, fixed candidate order,
-threshold, costs, limits, and explicit sample membership for each seed. SplitMix64
-selects unique record indices; membership is materialised verbatim, not delegated
-to an implicit scorer sample. The sample can hold at most half the validation corpus.
-Seeds select sample membership; they do not seed an adaptive optimiser or scorer.
-
-## Paired policies
-
-Both arms receive the same ordered individual interventions and fixed target.
-Each intervention is replayed independently; the target does not advance after
-a win. Thus the control is the existing single-enhancement replay path, not a
-comparison against the CLI's multi-enhancement bundle/prefix search.
+Our interventions were existing v1 Forest patches applied through `rebase()`.
+The control replayed each patch alone on a fixed target, through `judge(Full)`.
+The assisted arm used a materialised fixed sample, checked **both** unrelated
+receiving parents even after one failed, then required the same full target judge.
+A sample tie remained unresolved. Only an exact-context measured sample/peer
+rejection could avoid a subsequent evaluation; target outcomes were sealed from
+candidate selection. Neither arm advanced its parent or published a creature.
+The comparison used a fixed finite stream with equal upper allocations, rather
+than adaptive search at matched consumed compute.
 
 ```mermaid
 flowchart LR
-    M[Frozen manifest] --> C[Control: replay on target]
-    M --> S[Ledger: replay on target and fixed sample]
-    C --> J[Full target judge]
-    S --> R{Resolved sample loss?}
-    R -- yes --> X[Record screen rejection]
-    R -- no --> P[Check both unrelated peers]
-    P --> G{Both full peer judges pass?}
-    G -- no --> Y[Record peer rejection]
-    G -- yes --> J
-    J --> L[Sealed final result and paired report]
+    D[Separate discovery data] --> H[Independent searched histories and patches]
+    C[Separate calibration data] --> F[Freeze settings and inputs]
+    H --> F
+    F --> O[Ordinary single-patch replay]
+    F --> S[Fixed sample then both peers]
+    O --> T[Full target judge]
+    S --> T
+    T --> R[Lost-win allowance exceeded in three runs]
+    R --> X[Remove optional runtime; retain evidence]
 ```
 
-- A sampled tie or absent candidate score is unresolved and proceeds to peers.
-  A missing baseline, malformed output, wrong coverage, non-finite measurement,
-  or scorer failure is operational failure. Full scoring requires every candidate.
-- Each peer is attempted even if the other rejects. Both must pass before target
-  confirmation. A peer on which the patch cannot build supplies no passing evidence.
-- Failure reuse requires the exact payload bytes, receiving-parent checksum,
-  corpus bytes, scorer binary/settings, sample, seed, stage, code, threshold and
-  remaining frozen protocol. The manifest hash binds these together. Only measured
-  screen/peer rejections are reusable. Final target outcomes do not select subsequent
-  patches or populate this cache. Another lineage's rejection never fills this key.
-- Arm order alternates by seed. Each arm has the same call allocation and wall-time
-  allocation per seed; every scorer call, including a screen, consumes a call.
-  Each call reserves its timeout within the remaining allocation. Calls, observed
-  elapsed costs and unused/censored coverage are reported rather than equated.
+## Inputs, calibration and predeclaration
 
-## Ledger, restart and failures
+The inspected checkouts and working artefact directories supplied no usable
+production corpus paired with independent ancestry archives. Instead, the study
+used [UCI Wine Quality](https://archive.ics.uci.edu/dataset/186/wine+quality),
+Cortez, Cerdeira, Almeida, Matos and Reis (2009), DOI `10.24432/C56S3T`, CC BY 4.0.
+The headerless white-data mirror, pinned revision and raw SHA-256 are in the
+[preregistration](experiments/ledger-140-preregistration.json).
 
-`ledger-v1.jsonl` uses `{"record":"experiment","version":1,"event":...}`.
-Evaluation events identify manifest, seed, arm, attempt, stage, enhancement and
-executable payload reference, parent/child hashes and changed neuron/synapse IDs.
-They carry baseline and child measurements, score/error/complexity deltas, elapsed
-time, failure cause, and a source event when reusing a rejection. Missing
-measurements are `null`; operational failures are not measured rejections.
-Cost events record preparation, arm wall time, and final input verification.
+Deduplication left 3,961 rows: 1,980 discovery, 990 calibration and 991 validation.
+SplitMix64 seed 140 shuffled unique numeric rows; column normalisation, including
+the target, was fitted on discovery records. The freezer also refused any
+byte-identical record crossing calibration and validation. Validation records
+were hashed and materialised before scoring, but their outcomes were not used to
+choose parents, candidates or thresholds.
 
-The writer appends and syncs records. An OS file lock excludes simultaneous writers
-in one output directory. Completed attempts survive restart; operational failures
-are retried and charged. A dispatched call lacking an outcome reserves its full
-timeout on restart and makes the result inconclusive. An incomplete final line,
-malformed record, unknown version, changed input, or failed journal write fails
-loudly. The harness does not truncate or repair evidence automatically.
-Legacy ordinary records are retained and ignored as cache evidence; the ordinary
-journal reporter can still read those records alongside experimental entries.
+Each of three discovery runs independently initialised three receiving parents
+and a fourth donor from distinct seeded random 12-hidden-TANH networks. Each
+lineage performed six generations of eight residual-stump proposals, selecting
+only its best native-scorer improvement. All twelve lineages accepted six steps.
+The audit replayed the 72 selected edges against retained snapshots using the
+ordinary CLI and verified that all twelve root-to-parent hash lists are disjoint.
+Ancestry receipts therefore have executable evidence beyond different final hashes.
+They describe shallow custom searches, not production optimisation histories.
 
-`results.json` is created once and returned on a completed restart. Inputs are
-checked again before results are saved. No population candidate is published.
-Scorer/staging failure exits non-zero; a censored run exits 3 with its report.
+Each donor supplied 24 further proposals, retained regardless of source outcome,
+then repeated in the same order. Source successes/failures were 14/10, 10/14 and
+13/11. Discovery measurements remain in source receipts. Exported envelopes used
+neutral zero score claims with the frozen evaluation-corpus identity; those claims
+are not represented as source or validation measurements.
 
-## Reporting and maintenance decision
+The preregistration was committed as `db75e1a` before calibration. Calibration
+tried sample counts 32/64/128/256 and margins 1e-8/1e-5/0.001/0.01 using separate
+records and seeds 71–74. The smallest sample/margin with no false rejection and a
+positive win control was **128 / 0.01**: four calibration target wins and zero
+false rejections across those seeds. The complete trial table and setting lock
+were committed as `7b26468` before validation; see the
+[calibration lock](experiments/ledger-140-calibration-lock.json).
 
-Report per-seed paired distributions, distinct confirmed enhancements, full target
-confirmations, transferable wins, duplicate failures avoided, scored records,
-unresolved screens, operational failures, interrupted evaluations, coverage, and
-stage/component timings. `improvementPerEvaluationHour` is the best non-negative
-**measured** target score delta divided by total allocated-to-that-arm observed
-hours. Without a full target measurement it is unknown, not zero. This denominator
-includes declared preparation/search and calibration, freeze, input verification,
-sample preparation, replay, scoring and evaluation-ledger writes. Accounting-record
-writes and final result serialisation are outside the timing boundary; use an outer
-command timer to record that residual in a representative study.
+Eight sample seeds, 41–48, were then evaluated per discovery run. These are
+**three independent discovery runs and 24 fixed-input sample pairs**, not 24
+independent searches. Each arm/seed had limits of 192 calls and 600 seconds,
+with a ten-second scorer timeout. Native scorer commit
+`742c5df30fc98ece3afe784be1aca18f925b47b3` ran CPU/MSE with a cleared environment
+and one activation/file/Rayon thread. Source/toolchain/lock/binary/corpus hashes,
+lineage commitments, ordered payload hashes and sample commitments are recorded
+in the [machine-readable results](experiments/ledger-140-real-data-results.json).
 
-Uncertainty is a descriptive paired percentile bootstrap of rate differences:
-2,000 resamples, seed `0x140`, 95% interval. Its units are score gain/hour. Repeated
-sample seeds on fixed parents do not measure variability across independent full
-discovery runs. Missing rates are omitted with reduced coverage, not imputed.
-Timings from this shared container are indicative and never gate CI.
+## Outcomes and maintenance action
 
-The locked decision is `retain` only for representative, complete, failure-free
-runs meeting `minimumPairedRuns`, the lower interval exceeding the absolute
-`minimumRateGain`, and losses of control-confirmed enhancements within
-`maximumLostWins`. Exceeding the loss allowance or an interval wholly below zero
-returns `remove`. Other outcomes, including `evidenceClass: smoke`, are
-`inconclusive`. A `remove` result calls for deleting optional policy mechanisms
-before claiming the experiment complete; the harness does not modify its own code.
+| Measurement across 24 pairs | Control | Assisted policy |
+| --- | ---: | ---: |
+| Completed attempts | 1,152 | 1,152 |
+| Native scorer calls | 1,152 | 2,007 |
+| Full target evaluations | 1,152 | 28 |
+| Confirmed distinct patch observations per sample pair | 56 | 14 |
+| Distinct winning identities across discovery runs | 7 | 2 |
+| Repeated failed stage evaluations avoided | 0 | 957 |
+| Scored records, including baselines | 2,283,264 | 2,213,902 |
+| Operational failures / interrupted calls | 0 / 0 | 0 / 0 |
+| Outer-inclusive comparison seconds | 214.246 | 229.728 |
 
-## Reproducible smoke execution
+Workflow coverage was complete, while assisted full-target coverage was 28/1,152.
+The 14 assisted win observations were transferable to both peers and the target;
+they concern two distinct patches, with repeat sample observations counted
+separately. The 957 avoided evaluations count cached **stage** rejections; a
+repeated patch can avoid two peer evaluations.
 
-The fixture generator reuses the existing creature and enhancement constructors.
-It creates four paired sample-seed runs over 4,096 records, two hand-built patch
-payloads repeated in a fixed stream, and three hand-built receiving creatures.
-The root-to-parent receipts describe a synthetic weight change, not independent
-evolution. Calibration settings are fixed smoke values with no study behind them.
-`evidenceClass: smoke` keeps the maintenance decision inconclusive.
+The policy lost 42 control-confirmed patch observations: 40 at peer gates and two
+at the sample gate. Per-run losses over eight seeds were 25, 1 and 16. Five
+patches were consistently lost at peer gates; seven distinct patches were lost
+in at least one sample pair. The registered allowance was zero. This deterministic
+failure establishes the removal decision without relying on shared-host timings.
+No acceptance-gate fault was found: the lost wins are the policy's intended
+filtering behaviour, not a reason to weaken authoritative acceptance.
+
+The native within-run rate-difference intervals were approximately
+`[-3.18420, -3.15024]` and `[-0.44470, -0.42068]` score gain/hour for runs one and
+two. Run three made no assisted full-target measurement, so its rate and interval
+are **unknown**, not zero. An exact descriptive bootstrap over the two measured
+independent-run mean rate differences, including outer residuals, spans
+`[-3.16571, -0.43228]`; it excludes the unmeasured third run. Across all three
+independent runs, the mean lost-win count per sample pair has a descriptive
+bootstrap interval `[0.125, 3.125]`. These small-sample summaries are conditional
+on one dataset and do not establish cross-application effect sizes.
+
+The primary denominator charges 362.304 seconds of initial inspection, retrieval,
+source preparation and dev builds, 11.354 seconds of data/search preparation,
+1.316 seconds of calibration, and complete freeze/run command times. It includes
+sample materialisation, replay, scoring and ledger writes. The outer run commands
+took 21.437, 21.420 and 20.228 seconds; outer freeze/run residuals add about 0.226
+seconds beyond harness timers. Shared costs are divided equally across runs,
+seeds and arms. Component timers overlap and must not be summed. Subsequent
+ancestry audits, restart checks, correctness tests, report generation and timing
+receipt writes are outside this primary comparison; the report separately gives
+its ancestry-audit cost. Timings are indicative, from dev builds on shared host
+`vibe-coder-65826`, not a CI gate or a fleet-wide measurement.
+
+Removal deletes the optional example, sample/peer/cache implementation, freezer,
+smoke generator and their experiment-only tests/fixture, including the study input
+preparer once its evidence was captured. The ordinary journal writer no longer
+needs the experimental generic append interface. Neutral receipt auditing and
+report generation remain in `scripts/ledger-study-evidence.py`; its small-sample
+interval regression tests are `scripts/test_ledger_study_evidence.py`.
+
+## Reproduction from the archived source
+
+The complete executable implementation and input preparer remain at source pin
+`7b26468e8e70af8597811bef14d6fe1a26e5f683`. Explicitly fetch that pin when using a
+shallow checkout. Use a new private worktree and output directory; keep raw data,
+creatures, source receipts, path-bearing manifests and ledgers outside this repo.
+The current tree intentionally does not build the removed policy.
 
 ```bash
-cargo build --locked --example ledger_experiment
-./target/debug/examples/ledger_experiment prepare-smoke /tmp/ledger-smoke /path/to/rust_scorer
-./target/debug/examples/ledger_experiment freeze /tmp/ledger-smoke/draft.json /tmp/ledger-smoke/manifest.json
-timeout 180 ./target/debug/examples/ledger_experiment run /tmp/ledger-smoke/manifest.json /tmp/ledger-smoke/run
+# Set these to new private directories. Use gtimeout on macOS.
+export LEDGER_SETUP_STARTED="$(timeout 5 python3 -c 'import time; print(time.monotonic())')"
+study_source=/private/ledger-source
+scorer_source=/private/scorer-source
+study_work=/private/ledger-work
+study_target=/private/ledger-target
+
+timeout 60 git fetch origin 7b26468e8e70af8597811bef14d6fe1a26e5f683
+timeout 30 git worktree add --detach "$study_source" 7b26468e8e70af8597811bef14d6fe1a26e5f683
+timeout 120 gh repo clone stSoftwareAU/NEAT-AI-scorer "$scorer_source"
+timeout 60 git -C "$scorer_source" fetch origin 742c5df30fc98ece3afe784be1aca18f925b47b3
+timeout 30 git -C "$scorer_source" checkout --detach 742c5df30fc98ece3afe784be1aca18f925b47b3
+timeout 5 mkdir "$study_work"
+timeout 60 gh api 'repos/jbrownlee/Datasets/contents/winequality-white.csv?ref=d20fcb6402ae34e653d4513b00f39257bb37ed7f' \
+  -H 'Accept: application/vnd.github.raw+json' > "$study_work/data.csv"
+CARGO_TARGET_DIR="$study_target" timeout 900 cargo build --locked --manifest-path "$study_source/Cargo.toml" --examples --bin neat_ai_rebase < /dev/null
+CARGO_TARGET_DIR="$study_target" timeout 900 cargo build --locked --manifest-path "$scorer_source/Cargo.toml" --bin rust_scorer < /dev/null
+export LEDGER_SETUP_SECONDS="$(timeout 5 python3 -c 'import os, time; print(time.monotonic()-float(os.environ["LEDGER_SETUP_STARTED"]))')"
 ```
 
-The preparation directory must not already exist. Adjust the executable path for
-`CARGO_TARGET_DIR`. Rerunning `run` against the same completed directory verifies
-inputs and returns its saved results without another scorer call.
+Record actual elapsed setup costs, including retrieval and builds, before running
+the following Python recipe from the archived worktree. Replace the two paths and
+measured setup environment variable; do not copy this study's setup duration into another run.
+The preparation tool writes calibration/search measurements and drafts but does
+not score validation. Each freeze command precedes any validation command.
 
-## Current evidence and coverage
+```python
+import hashlib, json, os, pathlib, subprocess, time
+work = pathlib.Path('/private/ledger-work')
+binaries = pathlib.Path('/private/ledger-target/debug')
+setup_seconds = float(os.environ['LEDGER_SETUP_SECONDS'])
+assert hashlib.sha256((work/'data.csv').read_bytes()).hexdigest() == '659d419fff887f225bf977d20520bb64a64cae203e460087f809721d4430ba27'
+started = time.perf_counter()
+subprocess.run([str(binaries/'examples/ledger_study'), str(work/'data.csv'),
+                str(binaries/'rust_scorer'), str(work/'study')],
+               stdin=subprocess.DEVNULL, check=True, timeout=900)
+outer_prepare = time.perf_counter() - started
+(work/'prepare-command.json').write_text(json.dumps({
+    'seconds': outer_prepare, 'setupSeconds': setup_seconds}))
+study = work/'study'
+prep = json.loads((study/'preparation.json').read_text())
+extra = setup_seconds + max(0, outer_prepare-prep['seconds']-prep['calibrationSeconds'])
+for number in range(1, 4):
+    draft = study/f'run-{number}/draft.json'
+    value = json.loads(draft.read_text())
+    value['preparationSeconds'] += extra/3
+    draft.write_text(json.dumps(value))
+commands = []
+for phase in ['freeze', 'run']:
+    for number in range(1, 4):
+        directory = study/f'run-{number}'
+        args = ([directory/'draft.json', directory/'manifest.json'] if phase == 'freeze'
+                else [directory/'manifest.json', directory/'validation-run'])
+        started = time.perf_counter()
+        subprocess.run([str(binaries/'examples/ledger_experiment'), phase, *map(str, args)],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       check=True, timeout=900)
+        commands.append({'run': number, 'phase': phase,
+                         'seconds': time.perf_counter()-started})
+        (study/'execution-commands.json').write_text(json.dumps(commands))
+```
 
-The separately [registered real-data study](experiments/ledger-140-preregistration.json)
-uses the UCI Wine Quality regression data with three independent discovery runs.
-`ledger_study <headerless-numeric.csv> <rust_scorer> <new-directory>` prepares
-disjoint discovery, calibration and validation partitions, independently optimises
-receiving parents and a donor, and retains native search receipts and ancestry
-snapshots. It selects screening settings on calibration records before writing
-drafts. It never scores validation. The exported enhancement envelopes have neutral
-zero score claims; actual discovery-only measurements live in the source receipts,
-not in fields that could be mistaken for validation measurements. Private study
-artefacts stay outside this checkout.
+Run the recipe with stdin redirected from `/dev/null`. Run the current neutral
+auditor against those artefacts:
 
-The repository supplies deterministic correctness fixtures, not established
-independent evolved lineages or representative corpora. Their hand-constructed
-histories are test inputs, not provenance evidence. No representative benefit or
-negative result is established. The public availability record is
-[`experiments/ledger-140-availability.json`](experiments/ledger-140-availability.json).
-Private data, actual histories and operational integration remain outside this
-public repository. Representative paired validation and the maintenance verdict
-remain part of the same issue.
+```bash
+timeout 120 python3 -B scripts/ledger-study-evidence.py \
+  "$study_work/study" "$study_target/debug/neat_ai_rebase" /private/new-results.json < /dev/null
+timeout 20 python3 -B scripts/test_ledger_study_evidence.py < /dev/null
+```
 
-The archived [smoke manifest](experiments/ledger-140-smoke-manifest.json),
-[paired results](experiments/ledger-140-smoke-results.json),
-[raw replay ledger](experiments/ledger-140-smoke-ledger.jsonl), and
-[execution metadata](experiments/ledger-140-smoke-execution.json) record a separate
-native-scorer execution. It completed four sample-seed pairs with no operational
-failures. Across those pairs, ledger replay avoided four duplicate screen failures,
-used 36 scorer calls versus control's 16, and confirmed the same enhancement on the
-target and both synthetic peers. Full target coverage was 8/16 ledger attempts and
-16/16 control attempts; workflow coverage was complete in both arms. The four
-transferable-win counts concern the same hand-built patch, not four distinct
-scientific discoveries.
+The auditor creates its output once, verifies frozen input hashes, and dry-replays
+accepted ancestry edges. The ordinary CLI's `nothingToDo` exit 3 is expected when
+checking a final snapshot that already contains its last patch. A completed
+historical `run` can also be resumed against the same manifest/output: all three
+original completed restarts returned unchanged ledger hashes and no new calls.
 
-Ledger replay performed more scored-record work (202,752 versus 131,072). Its
-recorded rate difference interval was negative on these inputs, while its locked
-smoke decision remained `inconclusive`. The complete run command took about 5.60 s,
-excluding separately recorded preparation and freeze. These are dev-build timings
-on a shared parallel host, with fixed parents and patches; they are neither a
-representative negative result nor evidence of an optimisation benefit. The
-recorded native response in `rebase/tests/fixtures/ledger-scorer-output.json` comes
-from the scorer source commit in the execution metadata, using the generated
-parent-0 as `baseline` and the full 4,096-record corpus.
+The earlier synthetic [smoke manifest](experiments/ledger-140-smoke-manifest.json),
+[ledger](experiments/ledger-140-smoke-ledger.jsonl),
+[results](experiments/ledger-140-smoke-results.json) and
+[execution metadata](experiments/ledger-140-smoke-execution.json) remain historical
+execution evidence. Their path-specific inputs are not reusable unchanged, their
+settings were uncalibrated, and their hand-built ancestry establishes no benefit.
+The real-data comparison supersedes that smoke-only availability assessment; see
+[the availability record](experiments/ledger-140-availability.json).
+
+Not measured: production-scale corpora, long-running production optimisers,
+adaptive ledger-informed proposal generation, other application datasets or
+quiet-host release timings. Those limits do not change the predeclared removal
+trigger reached by this study.
