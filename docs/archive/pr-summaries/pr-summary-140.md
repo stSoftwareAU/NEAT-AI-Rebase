@@ -1,96 +1,88 @@
 ## Summary
 
-Added an opt-in paired replay harness, frozen manifests, a versioned replay ledger,
-protocol documentation and native-scorer smoke evidence. Ordinary CLI defaults and
-the existing journal record format remain unchanged. Part of #140.
+Completed the calibrated paired replay study. All three independent discovery
+runs reached the predeclared **remove** decision because the sample/peer policy
+lost target-confirmed wins. This PR preserves registration, calibration, aggregate
+results and reproduction instructions, with a neutral receipt auditor and report
+regressions. The rejected runtime policy is confined to archived source; runtime
+sources match Develop. Closes #140.
 
 ## Spec
 
 ### Intent and Rationale
 
-- Compare existing single-enhancement replay with fixed-sample screening, two peer checks and full target confirmation, using the existing engine and acceptance gate.
-- Keep the research policy separate from normal population re-entry until representative evidence establishes its value.
+- Test whether exact failure reuse and cross-lineage screening repay their costs before shipping an optional policy.
+- Use real regression data and genuinely searched independent histories; the earlier synthetic smoke execution could establish correctness, not optimisation benefit.
 
 ### Essential Design Decisions
 
-- Freeze executable and corpus checksums, parent histories, candidate order, explicit sample membership, seeds, thresholds, repetitions and equal per-arm allocations before validation.
-- Reuse only measured screen/peer rejections in the exact frozen receiving context. Unresolved samples continue; final target outcomes do not select later candidates.
-- Use CPU/MSE with a cleared, fixed-thread scorer environment. Every accepted target passes the existing full `judge()` gate; the harness publishes no population candidate.
-- Histories are operator-supplied evidence, checked for overlaps and endpoints; different creature hashes alone do not establish independent ancestry. Smoke receipts are explicitly synthetic.
+- Freeze settings, candidate order, sample membership, versions, immutable parents and equal upper compute limits before validation. Three independent discovery runs contain 24 sample-seed pairs, not 24 independent searches.
+- Apply the registered zero-lost-win allowance. Removal follows deterministic lost wins in every run; shared-host timing differences alone do not establish the negative finding.
+- Keep raw corpora, snapshots, source receipts, path-bearing manifests and ledgers outside the public tree. Publish aggregate outcomes and cryptographic commitments.
+- Preserve unknown measurements: run three has no assisted full-target measurement, so its rate is null and excluded from rate uncertainty. The study concerns a fixed finite candidate stream, not adaptive discovery at matched consumed compute.
 
 ### Undiscoverable Facts
 
-- The full versioned paper was read through the web reader. Direct downloads returned HTTP 403, so the documented checksum pins extracted text, not original HTML/PDF bytes.
-- No representative corpus and independently established receiving-lineage histories were supplied or present in this checkout. The public smoke inputs cannot establish the optimisation hypothesis.
-- The native scorer was built from `stSoftwareAU/NEAT-AI-scorer` commit `742c5df30fc98ece3afe784be1aca18f925b47b3`; execution metadata records versions, checksums and the timing boundary.
+- Inspected source/test trees and working artefact directories supplied no usable production corpus paired with independent ancestry archives; twelve independent seeded searches were produced instead.
+- Native scorer source was `742c5df30fc98ece3afe784be1aca18f925b47b3`; both tools used dev builds on shared host `vibe-coder-65826`. Validation completed on 14 November 2026, 02:49 UTC.
+- The checkpointed policy and input preparer remain reproducible at `7b26468e8e70af8597811bef14d6fe1a26e5f683`; they were withdrawn from this branch after the registered removal trigger. The earlier smoke archives remain historical evidence.
+- The research checksum identifies previously reviewed tool-extracted text of `2610.05950v1`, not original HTML/PDF bytes; direct downloads returned HTTP 403.
 
 ## Evidence
 
-Backend/CLI only. The ordinary source change adds `Journal::append_entry()` and
-routes `append()` through that same writer. Experiment code lives under
-`rebase/examples/ledger/` and `rebase/examples/ledger_experiment.rs`.
+Backend/CLI research only; no visual surface changed. The final diff adds study
+records and neutral analysis tooling, with no runtime, dependency or workflow
+change against Develop.
 
-`docs/ledger-experiment.md` contains the research pin, transfer limits, command,
-input formats, protocol, restart semantics and maintenance criteria. README Quick start examples
-and the Documentation table link that protocol. The archived
-manifest and results are `docs/experiments/ledger-140-smoke-manifest.json` and
-`docs/experiments/ledger-140-smoke-results.json`; provenance and timing limitations
-are in `docs/experiments/ledger-140-smoke-execution.json`. Raw records are preserved
-in `docs/experiments/ledger-140-smoke-ledger.jsonl`; both ledger and manifest
-checksums were verified against the execution metadata and results. Regenerate local paths
-with `prepare-smoke` rather than executing the path-specific archive unchanged.
+- `docs/experiments/ledger-140-preregistration.json` was committed before calibration; `docs/experiments/ledger-140-calibration-lock.json` before validation. Separate calibration selected 128 records and a 0.01 margin, with four calibration wins and zero false rejections across the calibration seeds.
+- `docs/experiments/ledger-140-real-data-results.json` contains 24 paired distributions, input/lineage/payload commitments, stage losses, uncertainty, coverage, failures and outer-inclusive accounting. All 72 accepted ancestry edges replayed through the ordinary CLI; twelve complete ancestry lists are disjoint.
+- All three runs completed with zero operational failures or interruptions. The policy avoided 957 repeated failed stage evaluations but lost 42 paired control-confirmed patch observations: 40 at peer gates and two at sample gates. Control confirmed seven distinct winning identities across runs; the policy confirmed two, transferable to both peers and the target.
+- Control used 1,152 scorer calls and 1,152 full target evaluations; the assisted arm used 2,007 calls and 28 full target evaluations. Workflow coverage was complete in both arms. Outer-inclusive totals were 214.246 and 229.728 seconds, including shared setup/search/calibration and complete freeze/run command costs; timings are indicative.
 
-Four paired smoke runs used the same parents and two repeated hand-built patches:
+The exact descriptive interval across the two measured independent-run mean rate
+differences is `[-3.16571, -0.43228]` score gain/hour; the third run's rate remains
+unknown. Across all three runs the lost-win mean per sample pair has descriptive
+interval `[0.125, 3.125]`. One dataset and three shallow custom discovery runs do
+not establish production-scale or cross-application effect sizes.
 
-| Measurement | Control | Ledger |
-| --- | ---: | ---: |
-| Scorer calls | 16 | 36 |
-| Full target confirmations | 16 | 8 |
-| Duplicate screen failures avoided | 0 | 4 |
-| Distinct confirmed patch identities across runs | 1 | 1 |
-| Scored records | 131,072 | 202,752 |
-
-Both arms completed their workflows without operational failures. Ledger target
-coverage was 8/16 attempts versus 16/16 for control. Its descriptive rate-difference
-interval was `[-0.024087, -0.019955]` score gain/hour. The complete run command took
-5.60 s, excluding separately recorded preparation/freeze. These dev-build timings
-came from a shared parallel host; four sample seeds are not four independent
-discovery runs. The locked smoke verdict is **inconclusive**, with no representative
-benefit established. A completed native run was also successfully resumed.
+`docs/ledger-experiment.md` documents method reconciliation, input preparation,
+calibration, maintenance action, accounting boundaries and archived-source
+commands. `docs/experiments/ledger-140-availability.json` now records the completed
+study. README's Quick start examples and Documentation table point to that record.
 
 ```mermaid
 flowchart LR
-    M[Frozen inputs] --> C[Control replay]
-    M --> S[Ledger sample]
-    S --> P[Both peer judges]
-    P --> F[Full target judge]
-    C --> F
-    F --> R[Sealed results]
+    D[Independent searches] --> F[Frozen paired study]
+    C[Separate calibration] --> F
+    F --> O[Ordinary replay]
+    F --> P[Sample and both peers]
+    O --> J[Full target judge]
+    P --> J
+    J --> L[Lost-win allowance exceeded]
+    L --> R[Archive evidence; do not ship policy]
 ```
 
-## Acceptance Criteria
-
-- **missing** — Compare current replay with screening on a fixed cheap sample then two unrelated lineages before full confirmation. — reason: the policy is implemented, but only synthetic receiving parents were available; genuine unrelated-lineage validation remains unperformed.
-- **missing** — Predeclare controls, seeds, sample size, compute limits and success/failure criteria. Identify code/model/data versions; separate calibration from untouched validation and count all preparation/search costs. — reason: the frozen protocol and smoke manifest are delivered, but representative calibration and a representative locked manifest do not yet exist.
-- **missing** — Deliver a reproducible command/manifest and machine-readable results with paired distributions, uncertainty, failures and actual coverage. Fixtures alone do not demonstrate an optimisation benefit. — reason: reproducible smoke artefacts are delivered; representative paired distributions and coverage remain absent, recorded explicitly in `docs/experiments/ledger-140-availability.json`.
-- **missing** — Record negative findings and remove optional code that does not earn its maintenance cost. Do not claim success before representative runs. — reason: smoke results are inconclusive for maintenance; no representative maintenance decision or benefit claim is made.
+Issue provenance: #140 — Experiment: Replayable experiment ledger and cross-lineage promotion.
 
 ## Test Plan
 
-- Passed `timeout 1200 ./quality.sh < /dev/null`: shell syntax/ShellCheck, runlib checks, actionlint, cargo-deny, formatting, Clippy, workspace tests and documentation. The experiment suite contains 16 passing tests.
-- `rebase/tests/ledger_experiment.rs::paired_replay_preserves_payloads_parents_and_the_full_acceptance_gate` covers payload replay fidelity, immutable parents/payloads, full record coverage, error/complexity deltas and completed restart. Duplicate scope, changed seeds/settings and peer independence have separate behavioural cases in that file.
-- The same suite covers unresolved/missing sample scores, missing baseline/candidate results, sampled/non-finite/wrong-coverage full results, operational failures, interrupted-call charging, ledger failures, unknown versions, malformed cached measurements, corpus membership changes, calibration overlap and legacy journal compatibility.
-- Tests were written before the new harness implementation; its entry-point test initially failed with `experiment protocol is not implemented`. Missing cached-measurement and corpus-membership guards were also observed failing during development, then fixed. The base branch has no experiment entry point; these are new-feature tests, not claims of a reproduced base-branch bug.
-- `rebase/tests/fixtures/ledger-scorer-output.json` records a real native scorer response. `rebase/tests/ledger_experiment.rs::the_strict_parser_accepts_a_recorded_native_scorer_response` checks its numeric results and contract fields; missing-field cases reject rather than applying legacy defaults. The producer's wire contract is in [scoring.rs at the observed commit](https://github.com/stSoftwareAU/NEAT-AI-scorer/blob/742c5df30fc98ece3afe784be1aca18f925b47b3/rust_scorer/src/scoring.rs).
-- Existing `rebase/tests/race_conditions.rs` (15 tests) and `rebase/tests/screen_budget.rs` (5 tests) passed, including through the full gate. No existing assertions were removed. Shared rule copies: none changed; classification calls `ScreenVerdict`, acceptance calls `judge`, and both journal interfaces use one writer.
-- Markdown lint passed. Security review: scorer arguments use an allowlist and argument APIs, input hashes are checked before/after validation, outputs avoid replacing existing evidence, and no secrets or private data are staged. The harness uses existing crate dependencies.
+- Passed `timeout 20 python3 -B scripts/test_ledger_study_evidence.py < /dev/null`: three tests. `BootstrapTests.test_two_run_interval_keeps_both_empirical_tails` and `test_three_run_interval_keeps_extreme_resamples` first failed under the initial new report calculation, then passed with inverse empirical CDF endpoints. `test_unreplicated_or_missing_rates_have_no_interval` preserves absent uncertainty. This is new report coverage, not a claim of a base-branch defect.
+- Passed the actual `scripts/ledger-study-evidence.py` command against retained study artefacts. It verified frozen input hashes and native source deltas, dry-replayed accepted ancestry, checked disjoint histories and complete failure-free paired coverage, and generated the committed aggregate report. A real final-snapshot check returned CLI exit 3 with `nothingToDo`; the auditor handles that specific expected outcome.
+- Passed `timeout 1200 ./quality.sh < /dev/null`: Bash syntax, ShellCheck, runlib contract, actionlint, cargo-deny, formatting, Clippy, workspace tests and documentation build. Disk checks showed about 487 GiB workspace and 497 GiB Cargo-target free; no budget refusal file was present.
+- Existing `rebase/tests/race_conditions.rs` (15 tests) and `rebase/tests/screen_budget.rs` (five tests) passed both targeted execution and the final full gate. No Develop test assertion was changed or removed. The checkpoint-only 16-test experiment suite passed before its runtime and fixture were retired; it is historical coverage, not a test suite shipped at head.
+- Passed `timeout 60 markdownlint-cli2 README.md docs/ledger-experiment.md < /dev/null`: ten Markdown files, zero issues. Re-read the protocol through reproduction and limitations, and swept README/docs/source for retired example/interface names and stale availability claims; surviving example references explicitly concern the archived pin.
+- Three completed historical restarts returned unchanged ledger hashes and no new scorer calls. No demonstrated acceptance-gate or runtime accounting repair was necessary; the report separately charges outer command residuals. Shared rule copies: none remain for the removed policy; the report has one bootstrap implementation called by its tests and real report path.
+
+Security check: local CLI arguments use argument arrays; output creation refuses
+replacement; no new network endpoint, authorisation surface or dependency was
+introduced. Public evidence excludes raw records and model contents. Staged paths
+contain no secrets or disallowed hidden files.
 
 ## Merge verification
 
-CI security checks and external review remain pending. The issue remains open;
-representative study work stays within #140.
+Local quality checks passed. CI security checks and external review remain pending.
 
-Not performed: representative calibration/validation and its maintenance decision,
-CI security checks, or external review. Risk: ledger-assisted replay may spend more
-compute than it saves; synthetic results establish neither representative benefit
-nor a representative negative result.
+Not performed: production-scale or adaptive discovery, additional application
+datasets, quiet-host release benchmarks, CI security checks or external review.
+Risk: these bounded real-data results do not generalise to every workload; the
+rejected optional policy does not ship.
