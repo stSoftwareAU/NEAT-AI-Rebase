@@ -125,6 +125,11 @@ def analyse(study, binary):
         result = read(result_path)
         require(result["manifestSha256"] == digest(manifest_path), "result manifest changed")
         require(result["status"] == "complete", "validation incomplete")
+        seeds = manifest["protocol"]["seeds"]
+        pairs = result["pairedRuns"]
+        require(seeds and len(seeds) == len(set(seeds)), "frozen protocol seeds must be nonempty and unique")
+        require(collections.Counter(pair["seed"] for pair in pairs) == collections.Counter(seeds),
+                f"run {number}: paired seeds must match frozen protocol exactly once")
         for artifact in [manifest["code"], manifest["scorer"], manifest["calibrationReport"],
                          *manifest["patches"],
                          *(file["artifact"] for file in manifest["corpus"] + manifest["calibrationCorpus"]),
@@ -137,7 +142,6 @@ def analyse(study, binary):
         ledger_path = directory / "validation-run/ledger-v1.jsonl"
         events = [json.loads(line)["event"] for line in ledger_path.read_text().splitlines()]
         evaluations = [entry for entry in events if "stage" in entry]
-        pairs = result["pairedRuns"]
         for pair in pairs:
             for arm in ["control", "ledger"]:
                 require(pair[arm]["coverage"] == 1 and pair[arm]["operationalFailures"] == 0
@@ -189,6 +193,11 @@ def analyse(study, binary):
             "maintenanceDecision": result["maintenanceDecision"],
             "nativeRateDelta95PercentInterval": result["rateDelta95PercentInterval"],
         })
+    allocated_seconds = math.fsum(pair[arm]["outerInclusiveSeconds"]
+                                  for run in runs for pair in run["pairedRuns"]
+                                  for arm in ["control", "ledger"])
+    require(math.isclose(allocated_seconds, window_seconds, rel_tol=0, abs_tol=1e-6),
+            "allocated costs do not reconcile with comparison window")
     lost_means = [statistics.mean(pair["lostWins"] for pair in run["pairedRuns"]) for run in runs]
     rate_means = [statistics.mean(pair["outerInclusiveRateDelta"] for pair in run["pairedRuns"]
                                  if pair["outerInclusiveRateDelta"] is not None)

@@ -153,7 +153,8 @@ smoke generator and their experiment-only tests/fixture, including the study inp
 preparer once its evidence was captured. The ordinary journal writer no longer
 needs the experimental generic append interface. Neutral receipt auditing and
 report generation remain in `scripts/ledger-study-evidence.py`; its small-sample
-interval regression tests are `scripts/test_ledger_study_evidence.py`.
+interval, seed-coverage and cost-reconciliation regression tests are
+`scripts/test_ledger_study_evidence.py`.
 
 ## Reproduction from the archived source
 
@@ -240,7 +241,11 @@ timeout 20 python3 -B scripts/test_ledger_study_evidence.py < /dev/null
 ```
 
 The auditor creates its output once, verifies frozen input hashes, and dry-replays
-accepted ancestry edges. The ordinary CLI's `nothingToDo` exit 3 is expected when
+accepted ancestry edges. Before processing each run, it requires exactly one pair
+for every frozen protocol seed; missing, duplicate or unexpected seeds are
+rejected. Allocated outer-inclusive costs must reconcile with the complete
+comparison window within one microsecond before any report is written.
+The ordinary CLI's `nothingToDo` exit 3 is expected when
 checking a final snapshot that already contains its last patch. A completed
 historical `run` can also be resumed against the same manifest/output: all three
 original completed restarts returned unchanged ledger hashes and no new calls.
