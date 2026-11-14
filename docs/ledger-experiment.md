@@ -240,10 +240,16 @@ timeout 120 python3 -B scripts/ledger-study-evidence.py \
 timeout 20 python3 -B scripts/test_ledger_study_evidence.py < /dev/null
 ```
 
+`quality.sh` and the CI shell-checks job run those auditor tests.
+
 The auditor creates its output once, verifies frozen input hashes, and dry-replays
 accepted ancestry edges. Before processing each run, it requires exactly one pair
 for every frozen protocol seed; missing, duplicate or unexpected seeds are
-rejected. Allocated outer-inclusive costs must reconcile with the complete
+rejected. It also re-derives every arm's planned and completed counts, coverage,
+winning identities, best gain, target confirmations, calls, operational failures,
+interrupted evaluations and each pair's lost wins from the run's ledger events,
+mirroring the archived runner's `results.rs`, and rejects an empty, foreign,
+incomplete or contradictory ledger before creating output. Allocated outer-inclusive costs must reconcile with the complete
 comparison window within one microsecond before any report is written.
 The ordinary CLI's `nothingToDo` exit 3 is expected when
 checking a final snapshot that already contains its last patch. A completed

@@ -170,6 +170,11 @@ jobs:
       - name: Check scripts/runlib.sh already-installed contract
         run: ./scripts/test-runlib.sh
 
+      # The retained study receipt auditor (Issue #140) is Python standard
+      # library only; its tests are the only protection for its checks.
+      - name: Test the study receipt auditor
+        run: python3 -B scripts/test_ledger_study_evidence.py < /dev/null
+
   ci-required:
     name: CI Required Checks
     needs: [quality, shell-checks]

@@ -56,6 +56,75 @@ def comparison_window(preparation, executions):
     return window, gap
 
 
+def read_ledger(path, manifest_hash, manifest):
+    """Parse a frozen-run ledger and return its evaluation events, rejecting foreign or malformed ones."""
+    text = path.read_text()
+    require(text and text.endswith("\n"), "ledger is empty or has an incomplete final line")
+    seeds = set(manifest["protocol"]["seeds"])
+    patches = manifest["patches"]
+    events = []
+    for number, line in enumerate(text.splitlines(), 1):
+        record = json.loads(line)
+        if record.get("record") != "experiment":
+            continue
+        event = record["event"]
+        if event.get("kind") == "cost":
+            continue
+        require(event["manifest"] == manifest_hash, f"ledger line {number} belongs to another manifest")
+        require(event["seed"] in seeds and event["arm"] in ("control", "ledger"),
+                f"ledger line {number} has an unexpected seed or arm")
+        require(isinstance(event["attempt"], int) and 0 <= event["attempt"] < len(patches)
+                and patches[event["attempt"]]["sha256"] == event["patch"]["sha256"],
+                f"ledger line {number} has an unexpected patch")
+        events.append(event)
+    return events
+
+
+def ledger_summary(events, seed, arm, planned):
+    """Re-derive one arm's counts from its ledger events, as the archived runner's results.rs does."""
+    mine = [entry for entry in events if entry["seed"] == seed and entry["arm"] == arm]
+    complete = [entry for entry in mine if entry["stage"] == "complete"]
+    gains = [entry["measurement"]["scoreDelta"] for entry in complete if entry.get("measurement")]
+    finished = {entry["id"] for entry in mine if entry["state"] != "started"}
+    return {
+        "planned": planned,
+        "completed": len(complete),
+        "winningEnhancements": sorted({entry["enhancementId"] for entry in complete
+                                       if entry["state"] == "accepted"}),
+        "bestGain": max(gains, default=None),
+        "authoritativeConfirmations": sum(entry["stage"] == "full"
+                                          and entry["state"] in ("accepted", "rejected")
+                                          for entry in mine),
+        "calls": sum(entry["state"] == "started" for entry in mine),
+        "operationalFailures": sum(entry["state"] == "operationalFailure" for entry in mine),
+        "interruptedEvaluations": sum(entry["state"] == "started" and entry["id"] not in finished
+                                      for entry in mine),
+        "coverage": len(complete) / planned,
+    }
+
+
+def reconcile_ledger(number, pairs, events, planned):
+    """Require every reported arm summary to agree with the ledger it commits to."""
+    require(planned > 0 and events, f"run {number}: ledger holds no evaluations")
+    for pair in pairs:
+        for arm in ["control", "ledger"]:
+            derived = ledger_summary(events, pair["seed"], arm, planned)
+            reported = pair[arm]
+            for key, value in derived.items():
+                if key == "bestGain" and value is not None and isinstance(reported.get(key), (int, float)):
+                    agrees = math.isclose(reported[key], value, rel_tol=1e-12, abs_tol=1e-12)
+                elif key == "winningEnhancements":
+                    agrees = sorted(set(reported.get(key, []))) == value
+                else:
+                    agrees = reported.get(key) == value
+                require(agrees, f"run {number} seed {pair['seed']} {arm}: {key} disagrees with ledger")
+            require(derived["completed"] == planned and derived["operationalFailures"] == 0
+                    and derived["interruptedEvaluations"] == 0, "ledger records incomplete or failed evaluations")
+        lost = set(pair["control"]["winningEnhancements"]) - set(pair["ledger"]["winningEnhancements"])
+        require(pair["lostWins"] == len(lost),
+                f"run {number} seed {pair['seed']}: lostWins disagrees with ledger")
+
+
 def replay(binary, parent, patch, training, workspace):
     with tempfile.TemporaryDirectory(dir=workspace) as temporary:
         temporary = pathlib.Path(temporary)
@@ -140,8 +209,8 @@ def analyse(study, binary):
             require(not seen_ancestry.intersection(history["ancestors"]), "lineages share ancestry")
             seen_ancestry.update(history["ancestors"])
         ledger_path = directory / "validation-run/ledger-v1.jsonl"
-        events = [json.loads(line)["event"] for line in ledger_path.read_text().splitlines()]
-        evaluations = [entry for entry in events if "stage" in entry]
+        evaluations = read_ledger(ledger_path, result["manifestSha256"], manifest)
+        reconcile_ledger(number, pairs, evaluations, len(manifest["patches"]))
         for pair in pairs:
             for arm in ["control", "ledger"]:
                 require(pair[arm]["coverage"] == 1 and pair[arm]["operationalFailures"] == 0

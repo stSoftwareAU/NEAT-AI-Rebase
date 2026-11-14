@@ -117,7 +117,7 @@ cp "$parent.replay.json" "$output/rebase.json"
             self.write_json(manifest_path, {
                 "protocol": {"seeds": list(range(41, 49))},
                 "code": artifact, "scorer": artifact, "calibrationReport": artifact,
-                "patches": [], "corpus": [], "calibrationCorpus": [], "parents": [],
+                "patches": [artifact, artifact], "corpus": [], "calibrationCorpus": [], "parents": [],
                 "samples": [], "freezeSeconds": 0.5, "codeRevision": "fixture",
                 "dirtyCheckout": False, "cargoLockSha256": "fixture", "scorerEnvironment": {},
             })
@@ -127,16 +127,18 @@ cp "$parent.replay.json" "$output/rebase.json"
                 for arm in ["control", "ledger"]:
                     # (12 shared setup/preparation seconds / 3 runs + 0.5 freeze) / 16 arms.
                     pair[arm] = {
-                        "coverage": 1, "operationalFailures": 0, "interruptedEvaluations": 0,
-                        "budgetOverrunSeconds": 0, "sharedSeconds": 0.28125,
-                        "totalSeconds": 0.38125, "bestGain": 1, "winningEnhancements": [],
+                        "planned": 2, "completed": 2, "coverage": 1, "calls": 2,
+                        "authoritativeConfirmations": 2, "operationalFailures": 0,
+                        "interruptedEvaluations": 0, "budgetOverrunSeconds": 0,
+                        "sharedSeconds": 0.28125, "totalSeconds": 0.38125, "bestGain": 1,
+                        "winningEnhancements": ["enhancement-0", "enhancement-1"],
                     }
                 pairs.append(pair)
             self.write_json(directory / "validation-run/results.json", {
                 "manifestSha256": evidence.digest(manifest_path), "status": "complete",
                 "pairedRuns": pairs, "maintenanceDecision": "remove", "rateDelta95PercentInterval": None,
             })
-            (directory / "validation-run/ledger-v1.jsonl").write_text("")
+            self.write_ledger(number, self.ledger_events(manifest_path, artifact))
             self.write_json(directory / "candidates.json", [{"delta": 1}])
             for lineage in range(1, 5):
                 ancestors = [f"{number}-{lineage}-{generation}" for generation in range(7)]
@@ -163,6 +165,37 @@ cp "$parent.replay.json" "$output/rebase.json"
                     "seed": 1000 * number + lineage, "ancestors": ancestors,
                 })
         self.write_json(self.study / "execution-commands.json", executions)
+
+    def ledger_events(self, manifest_path, artifact):
+        """A ledger consistent with the fixture results: two accepted patches per seed and arm."""
+        manifest_hash = evidence.digest(manifest_path)
+        events = []
+        for seed in range(41, 49):
+            for arm in ["control", "ledger"]:
+                for attempt in range(2):
+                    for stage, state in [("full", "started"), ("full", "accepted"),
+                                         ("complete", "accepted")]:
+                        events.append({
+                            "id": len(events) if state == "started" else len(events) - 1,
+                            "manifest": manifest_hash, "seed": seed, "arm": arm,
+                            "attempt": attempt, "stage": stage, "state": state,
+                            "patch": {"sha256": artifact["sha256"]},
+                            "enhancementId": f"enhancement-{attempt}",
+                            "measurement": {"scoreDelta": 1} if stage == "complete" else None,
+                        })
+        return events
+
+    def write_ledger(self, number, events):
+        lines = [json.dumps({"record": "experiment", "version": 1, "event": event})
+                 for event in events]
+        path = self.study / f"run-{number}/validation-run/ledger-v1.jsonl"
+        path.write_text("".join(line + "\n" for line in lines))
+
+    def change_ledger(self, number, change):
+        path = self.study / f"run-{number}/validation-run/ledger-v1.jsonl"
+        events = [json.loads(line)["event"] for line in path.read_text().splitlines()]
+        change(events)
+        self.write_ledger(number, events)
 
     def change_result(self, number, change):
         path = self.study / f"run-{number}/validation-run/results.json"
@@ -216,6 +249,39 @@ cp "$parent.replay.json" "$output/rebase.json"
     def test_unexpected_seed_is_rejected(self):
         self.change_result(1, lambda pairs: pairs[-1].update(seed=49))
         self.assert_rejected("paired seeds must match frozen protocol exactly once")
+
+    def test_empty_ledger_is_rejected(self):
+        (self.study / "run-1/validation-run/ledger-v1.jsonl").write_text("")
+        self.assert_rejected("ledger is empty or has an incomplete final line")
+
+    def test_missing_complete_event_is_rejected(self):
+        self.change_ledger(1, lambda events: events.remove(
+            next(e for e in events if e["stage"] == "complete")))
+        self.assert_rejected("disagrees with ledger")
+
+    def test_operational_failure_in_ledger_is_rejected(self):
+        def fail(events):
+            next(e for e in events if e["stage"] == "full" and e["state"] == "accepted").update(
+                state="operationalFailure")
+        self.change_ledger(2, fail)
+        self.assert_rejected("disagrees with ledger")
+
+    def test_unfinished_evaluation_in_ledger_is_rejected(self):
+        self.change_ledger(3, lambda events: events.pop(1))
+        self.assert_rejected("disagrees with ledger")
+
+    def test_winning_identity_disagreeing_with_results_is_rejected(self):
+        self.change_result(1, lambda pairs: pairs[0]["ledger"].update(
+            winningEnhancements=["enhancement-0"]))
+        self.assert_rejected("winningEnhancements disagrees with ledger")
+
+    def test_lost_win_count_disagreeing_with_ledger_is_rejected(self):
+        self.change_result(1, lambda pairs: pairs[0].update(lostWins=1))
+        self.assert_rejected("lostWins disagrees with ledger")
+
+    def test_ledger_from_another_manifest_is_rejected(self):
+        self.change_ledger(1, lambda events: events[0].update(manifest="other"))
+        self.assert_rejected("belongs to another manifest")
 
     def test_unreconciled_shared_costs_are_rejected(self):
         self.change_result(1, lambda pairs: pairs[0]["control"].update(sharedSeconds=0))
