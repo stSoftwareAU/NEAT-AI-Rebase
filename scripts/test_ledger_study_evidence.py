@@ -64,6 +64,9 @@ class AccountingTests(unittest.TestCase):
             evidence.comparison_window(preparation, executions)
 
 
+LOST_WIN_SEED = 41
+
+
 class ReceiptCliTests(unittest.TestCase):
     """Exercise the public command with small, self-contained receipt files.
 
@@ -123,15 +126,22 @@ cp "$parent.replay.json" "$output/rebase.json"
             })
             pairs = []
             for seed in range(41, 49):
-                pair = {"seed": seed, "lostWins": 0}
+                lost = seed == LOST_WIN_SEED
+                pair = {"seed": seed, "lostWins": int(lost)}
                 for arm in ["control", "ledger"]:
                     # (12 shared setup/preparation seconds / 3 runs + 0.5 freeze) / 16 arms.
+                    # Each arm makes one screen call and two full-target calls; the ledger arm
+                    # of the lost-win seed has its second patch rejected by a peer instead.
+                    peer_rejected = lost and arm == "ledger"
                     pair[arm] = {
-                        "planned": 2, "completed": 2, "coverage": 1, "calls": 2,
-                        "authoritativeConfirmations": 2, "operationalFailures": 0,
+                        "planned": 2, "completed": 2, "coverage": 1,
+                        "calls": 2 if peer_rejected else 3,
+                        "authoritativeConfirmations": 1 if peer_rejected else 2,
+                        "operationalFailures": 0,
                         "interruptedEvaluations": 0, "budgetOverrunSeconds": 0,
                         "sharedSeconds": 0.28125, "totalSeconds": 0.38125, "bestGain": 1,
-                        "winningEnhancements": ["enhancement-0", "enhancement-1"],
+                        "winningEnhancements": (["enhancement-0"] if peer_rejected
+                                                else ["enhancement-0", "enhancement-1"]),
                     }
                 pairs.append(pair)
             self.write_json(directory / "validation-run/results.json", {
@@ -167,22 +177,35 @@ cp "$parent.replay.json" "$output/rebase.json"
         self.write_json(self.study / "execution-commands.json", executions)
 
     def ledger_events(self, manifest_path, artifact):
-        """A ledger consistent with the fixture results: two accepted patches per seed and arm."""
+        """A ledger consistent with the fixture results.
+
+        Every arm runs one screen evaluation and accepts two patches through full-target
+        evaluations, except the ledger arm of LOST_WIN_SEED, where a peer rejects the second
+        patch before any full-target evaluation: control wins it and the ledger arm loses it.
+        """
         manifest_hash = evidence.digest(manifest_path)
         events = []
+
+        def add(seed, arm, attempt, stage, state, identity, measured=False):
+            events.append({
+                "id": identity, "manifest": manifest_hash, "seed": seed, "arm": arm,
+                "attempt": attempt, "stage": stage, "state": state,
+                "patch": {"sha256": artifact["sha256"]},
+                "enhancementId": f"enhancement-{attempt}",
+                "measurement": {"scoreDelta": 1} if measured else None,
+            })
+
         for seed in range(41, 49):
             for arm in ["control", "ledger"]:
+                add(seed, arm, 0, "screen", "started", len(events))
+                add(seed, arm, 0, "screen", "accepted", len(events) - 1)
                 for attempt in range(2):
-                    for stage, state in [("full", "started"), ("full", "accepted"),
-                                         ("complete", "accepted")]:
-                        events.append({
-                            "id": len(events) if state == "started" else len(events) - 1,
-                            "manifest": manifest_hash, "seed": seed, "arm": arm,
-                            "attempt": attempt, "stage": stage, "state": state,
-                            "patch": {"sha256": artifact["sha256"]},
-                            "enhancementId": f"enhancement-{attempt}",
-                            "measurement": {"scoreDelta": 1} if stage == "complete" else None,
-                        })
+                    if seed == LOST_WIN_SEED and arm == "ledger" and attempt == 1:
+                        add(seed, arm, attempt, "complete", "peerRejected", len(events))
+                        continue
+                    add(seed, arm, attempt, "full", "started", len(events))
+                    add(seed, arm, attempt, "full", "accepted", len(events) - 1)
+                    add(seed, arm, attempt, "complete", "accepted", len(events), measured=True)
         return events
 
     def write_ledger(self, number, events):
@@ -196,6 +219,15 @@ cp "$parent.replay.json" "$output/rebase.json"
         events = [json.loads(line)["event"] for line in path.read_text().splitlines()]
         change(events)
         self.write_ledger(number, events)
+
+    @staticmethod
+    def screen_result(events):
+        """The first screen-stage result event, which no full-target count depends on."""
+        return next(e for e in events if e["stage"] == "screen" and e["state"] != "started")
+
+    def change_arm(self, number, seed, arm, **changes):
+        self.change_result(number, lambda pairs: next(
+            pair for pair in pairs if pair["seed"] == seed)[arm].update(changes))
 
     def change_result(self, number, change):
         path = self.study / f"run-{number}/validation-run/results.json"
@@ -229,6 +261,12 @@ cp "$parent.replay.json" "$output/rebase.json"
                               for arm in ["control", "ledger"])
         self.assertAlmostEqual(report["comparisonWindowSeconds"], 30)
         self.assertAlmostEqual(allocated, report["comparisonWindowSeconds"])
+        for run in report["runs"]:
+            self.assertEqual([pair["lostWins"] for pair in run["pairedRuns"]],
+                             [1 if pair["seed"] == LOST_WIN_SEED else 0
+                              for pair in run["pairedRuns"]])
+            self.assertEqual(run["lostWinReasons"], {"peerRejected": 1})
+        self.assertEqual(report["uncertainty"]["lostWinMeanPerPairByRun"], [0.125] * 3)
 
     def test_missing_frozen_seed_is_rejected(self):
         self.change_result(1, lambda pairs: pairs.pop())
@@ -260,23 +298,40 @@ cp "$parent.replay.json" "$output/rebase.json"
         self.assert_rejected("disagrees with ledger")
 
     def test_operational_failure_in_ledger_is_rejected(self):
-        def fail(events):
-            next(e for e in events if e["stage"] == "full" and e["state"] == "accepted").update(
-                state="operationalFailure")
-        self.change_ledger(2, fail)
-        self.assert_rejected("disagrees with ledger")
+        self.change_ledger(2, lambda events: self.screen_result(events).update(
+            state="operationalFailure"))
+        self.assert_rejected("operationalFailures disagrees with ledger")
 
     def test_unfinished_evaluation_in_ledger_is_rejected(self):
-        self.change_ledger(3, lambda events: events.pop(1))
-        self.assert_rejected("disagrees with ledger")
+        self.change_ledger(3, lambda events: events.remove(self.screen_result(events)))
+        self.assert_rejected("interruptedEvaluations disagrees with ledger")
+
+    def test_reported_operational_failure_matching_ledger_is_rejected(self):
+        self.change_ledger(2, lambda events: self.screen_result(events).update(
+            state="operationalFailure"))
+        self.change_arm(2, 41, "control", operationalFailures=1)
+        self.assert_rejected("ledger records incomplete or failed evaluations")
+
+    def test_reported_unfinished_evaluation_matching_ledger_is_rejected(self):
+        self.change_ledger(3, lambda events: events.remove(self.screen_result(events)))
+        self.change_arm(3, 41, "control", interruptedEvaluations=1)
+        self.assert_rejected("ledger records incomplete or failed evaluations")
 
     def test_winning_identity_disagreeing_with_results_is_rejected(self):
-        self.change_result(1, lambda pairs: pairs[0]["ledger"].update(
+        self.change_result(1, lambda pairs: pairs[1]["ledger"].update(
             winningEnhancements=["enhancement-0"]))
         self.assert_rejected("winningEnhancements disagrees with ledger")
 
     def test_lost_win_count_disagreeing_with_ledger_is_rejected(self):
-        self.change_result(1, lambda pairs: pairs[0].update(lostWins=1))
+        # The true count for the lost-win seed is control wins minus ledger wins: 1.
+        # Zero is the reverse difference (ledger wins minus control wins).
+        self.change_result(1, lambda pairs: next(
+            pair for pair in pairs if pair["seed"] == LOST_WIN_SEED).update(lostWins=0))
+        self.assert_rejected("lostWins disagrees with ledger")
+
+    def test_lost_win_reported_for_seed_without_one_is_rejected(self):
+        self.change_result(1, lambda pairs: next(
+            pair for pair in pairs if pair["seed"] != LOST_WIN_SEED).update(lostWins=1))
         self.assert_rejected("lostWins disagrees with ledger")
 
     def test_ledger_from_another_manifest_is_rejected(self):
