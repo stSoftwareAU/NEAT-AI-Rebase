@@ -107,7 +107,7 @@ in the [machine-readable results](experiments/ledger-140-real-data-results.json)
 | Repeated failed stage evaluations avoided | 0 | 957 |
 | Scored records, including baselines | 2,283,264 | 2,213,902 |
 | Operational failures / interrupted calls | 0 / 0 | 0 / 0 |
-| Outer-inclusive comparison seconds | 214.246 | 229.728 |
+| Outer-inclusive comparison seconds | 244.101 | 259.583 |
 
 Workflow coverage was complete, while assisted full-target coverage was 28/1,152.
 The 14 assisted win observations were transferable to both peers and the target;
@@ -128,21 +128,24 @@ The native within-run rate-difference intervals were approximately
 two. Run three made no assisted full-target measurement, so its rate and interval
 are **unknown**, not zero. An exact descriptive bootstrap over the two measured
 independent-run mean rate differences, including outer residuals, spans
-`[-3.16571, -0.43228]`; it excludes the unmeasured third run. Across all three
+`[-2.74753, -0.33600]`; it excludes the unmeasured third run. Across all three
 independent runs, the mean lost-win count per sample pair has a descriptive
 bootstrap interval `[0.125, 3.125]`. These small-sample summaries are conditional
 on one dataset and do not establish cross-application effect sizes.
 
-The primary denominator charges 362.304 seconds of initial inspection, retrieval,
+The primary denominator covers the complete 503.684-second setup-through-validation
+window. It charges 362.304 seconds of initial inspection, retrieval,
 source preparation and dev builds, 11.354 seconds of data/search preparation,
 1.316 seconds of calibration, and complete freeze/run command times. It includes
 sample materialisation, replay, scoring and ledger writes. The outer run commands
 took 21.437, 21.420 and 20.228 seconds; outer freeze/run residuals add about 0.226
-seconds beyond harness timers. Shared costs are divided equally across runs,
-seeds and arms. Component timers overlap and must not be summed. Subsequent
-ancestry audits, restart checks, correctness tests, report generation and timing
-receipt writes are outside this primary comparison; the report separately gives
-its ancestry-audit cost. Timings are indicative, from dev builds on shared host
+seconds beyond harness timers. A further 59.710 seconds of inter-command
+preparation and bookkeeping is charged from the whole-window clock boundary.
+The original frozen native results remain immutable; the public report adds these
+outer costs without changing any screening setting or decision. Shared costs are divided equally across runs, seeds and arms. Component timers overlap and must not be summed. Subsequent
+ancestry audits, restart checks, correctness tests and report generation are outside this
+primary comparison. Timing-receipt writes within that window are included. The
+report separately gives its ancestry-audit cost. Timings are indicative, from dev builds on shared host
 `vibe-coder-65826`, not a CI gate or a fleet-wide measurement.
 
 Removal deletes the optional example, sample/peer/cache implementation, freezer,
@@ -162,7 +165,9 @@ The current tree intentionally does not build the removed policy.
 
 ```bash
 # Set these to new private directories. Use gtimeout on macOS.
-export LEDGER_SETUP_STARTED="$(timeout 5 python3 -c 'import time; print(time.monotonic())')"
+set -euo pipefail
+LEDGER_SETUP_STARTED="$(timeout 5 python3 -c 'import time; print(time.monotonic())')"
+export LEDGER_SETUP_STARTED
 study_source=/private/ledger-source
 scorer_source=/private/scorer-source
 study_work=/private/ledger-work
@@ -178,28 +183,29 @@ timeout 60 gh api 'repos/jbrownlee/Datasets/contents/winequality-white.csv?ref=d
   -H 'Accept: application/vnd.github.raw+json' > "$study_work/data.csv"
 CARGO_TARGET_DIR="$study_target" timeout 900 cargo build --locked --manifest-path "$study_source/Cargo.toml" --examples --bin neat_ai_rebase < /dev/null
 CARGO_TARGET_DIR="$study_target" timeout 900 cargo build --locked --manifest-path "$scorer_source/Cargo.toml" --bin rust_scorer < /dev/null
-export LEDGER_SETUP_SECONDS="$(timeout 5 python3 -c 'import os, time; print(time.monotonic()-float(os.environ["LEDGER_SETUP_STARTED"]))')"
 ```
 
-Record actual elapsed setup costs, including retrieval and builds, before running
-the following Python recipe from the archived worktree. Replace the two paths and
-measured setup environment variable; do not copy this study's setup duration into another run.
+The following Python recipe records elapsed setup costs, including retrieval,
+builds and intervening preparation. Run it from the archived worktree with the
+setup-start environment variable still set; replace the two private paths.
+Do not copy this study's setup duration into another run.
 The preparation tool writes calibration/search measurements and drafts but does
 not score validation. Each freeze command precedes any validation command.
 
 ```python
-import hashlib, json, os, pathlib, subprocess, time
+import datetime, hashlib, json, os, pathlib, subprocess, time
 work = pathlib.Path('/private/ledger-work')
 binaries = pathlib.Path('/private/ledger-target/debug')
-setup_seconds = float(os.environ['LEDGER_SETUP_SECONDS'])
 assert hashlib.sha256((work/'data.csv').read_bytes()).hexdigest() == '659d419fff887f225bf977d20520bb64a64cae203e460087f809721d4430ba27'
+began_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+setup_seconds = time.monotonic() - float(os.environ['LEDGER_SETUP_STARTED'])
 started = time.perf_counter()
 subprocess.run([str(binaries/'examples/ledger_study'), str(work/'data.csv'),
                 str(binaries/'rust_scorer'), str(work/'study')],
                stdin=subprocess.DEVNULL, check=True, timeout=900)
 outer_prepare = time.perf_counter() - started
 (work/'prepare-command.json').write_text(json.dumps({
-    'seconds': outer_prepare, 'setupSeconds': setup_seconds}))
+    'seconds': outer_prepare, 'setupSeconds': setup_seconds, 'beganAt': began_at}))
 study = work/'study'
 prep = json.loads((study/'preparation.json').read_text())
 extra = setup_seconds + max(0, outer_prepare-prep['seconds']-prep['calibrationSeconds'])
@@ -219,7 +225,8 @@ for phase in ['freeze', 'run']:
                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                        check=True, timeout=900)
         commands.append({'run': number, 'phase': phase,
-                         'seconds': time.perf_counter()-started})
+                         'seconds': time.perf_counter()-started,
+                         'completedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()})
         (study/'execution-commands.json').write_text(json.dumps(commands))
 ```
 

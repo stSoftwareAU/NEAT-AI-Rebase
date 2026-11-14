@@ -12,11 +12,13 @@
   "minImprovement": 0.01,
   "preparationCommandSeconds": 12.713171297999907,
   "setupSeconds": 362.30368,
+  "comparisonWindowSeconds": 503.683989,
+  "interCommandPreparationSeconds": 59.71038250299978,
   "searchAndDataPreparationSeconds": 11.353828755,
   "calibrationSeconds": 1.316329251,
   "preparationNativeCalls": 699,
   "preparationScoredRecords": 2784330,
-  "postValidationAuditSeconds": 0.6742497499999445,
+  "postValidationAuditSeconds": 0.685563208000076,
   "runs": [
     {
       "run": 1,
@@ -197,8 +199,8 @@
               "3e3a9c26b9906d9d"
             ],
             "wins": 4,
-            "outerInclusiveSeconds": 8.963209342833343,
-            "outerInclusiveImprovementPerEvaluationHour": 7.028430504596858
+            "outerInclusiveSeconds": 10.207175644979172,
+            "outerInclusiveImprovementPerEvaluationHour": 6.171863417991174
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -227,13 +229,13 @@
               "23ffd72a16a1155a"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.780770300833343,
-            "outerInclusiveImprovementPerEvaluationHour": 3.8341002399734077
+            "outerInclusiveSeconds": 11.024736602979171,
+            "outerInclusiveImprovementPerEvaluationHour": 3.4014829658076637
           },
           "lostWins": 3,
           "rateDelta": -3.195588242752897,
           "seed": 41,
-          "outerInclusiveRateDelta": -3.19433026462345
+          "outerInclusiveRateDelta": -2.7703804521835105
         },
         {
           "control": {
@@ -266,8 +268,8 @@
               "3e3a9c26b9906d9d"
             ],
             "wins": 4,
-            "outerInclusiveSeconds": 8.922375675833344,
-            "outerInclusiveImprovementPerEvaluationHour": 7.060596443488524
+            "outerInclusiveSeconds": 10.166341977979172,
+            "outerInclusiveImprovementPerEvaluationHour": 6.19665304400667
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -296,13 +298,13 @@
               "23ffd72a16a1155a"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.616295884833344,
-            "outerInclusiveImprovementPerEvaluationHour": 3.899677610450295
+            "outerInclusiveSeconds": 10.860262186979172,
+            "outerInclusiveImprovementPerEvaluationHour": 3.4529970926954947
           },
           "lostWins": 3,
           "rateDelta": -3.1621565021141063,
           "seed": 42,
-          "outerInclusiveRateDelta": -3.1609188330382296
+          "outerInclusiveRateDelta": -2.743655951311175
         },
         {
           "control": {
@@ -335,8 +337,8 @@
               "3e3a9c26b9906d9d"
             ],
             "wins": 4,
-            "outerInclusiveSeconds": 8.922416300833342,
-            "outerInclusiveImprovementPerEvaluationHour": 7.060564295612788
+            "outerInclusiveSeconds": 10.166382602979171,
+            "outerInclusiveImprovementPerEvaluationHour": 6.196628282098748
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -365,13 +367,13 @@
               "23ffd72a16a1155a"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.545594175833342,
-            "outerInclusiveImprovementPerEvaluationHour": 3.928561498297309
+            "outerInclusiveSeconds": 10.78956047797917,
+            "outerInclusiveImprovementPerEvaluationHour": 3.475623852712631
           },
           "lostWins": 3,
           "rateDelta": -3.1332210983581557,
           "seed": 43,
-          "outerInclusiveRateDelta": -3.132002797315479
+          "outerInclusiveRateDelta": -2.7210044293861175
         },
         {
           "control": {
@@ -404,8 +406,8 @@
               "3e3a9c26b9906d9d"
             ],
             "wins": 4,
-            "outerInclusiveSeconds": 8.924736092833344,
-            "outerInclusiveImprovementPerEvaluationHour": 7.058729054727445
+            "outerInclusiveSeconds": 10.168702394979173,
+            "outerInclusiveImprovementPerEvaluationHour": 6.195214641679604
           },
           "ledger": {
             "authoritativeConfirmations": 0,
@@ -432,7 +434,7 @@
             "unresolvedSamples": 26,
             "winningEnhancements": [],
             "wins": 0,
-            "outerInclusiveSeconds": 9.434399134833344,
+            "outerInclusiveSeconds": 10.678365436979172,
             "outerInclusiveImprovementPerEvaluationHour": null
           },
           "lostWins": 4,
@@ -471,8 +473,8 @@
               "3e3a9c26b9906d9d"
             ],
             "wins": 4,
-            "outerInclusiveSeconds": 8.925882675833343,
-            "outerInclusiveImprovementPerEvaluationHour": 7.057822318774298
+            "outerInclusiveSeconds": 10.169848977979171,
+            "outerInclusiveImprovementPerEvaluationHour": 6.194516172331153
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -501,13 +503,13 @@
               "23ffd72a16a1155a"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.556075384833344,
-            "outerInclusiveImprovementPerEvaluationHour": 3.9242526086669103
+            "outerInclusiveSeconds": 10.800041686979172,
+            "outerInclusiveImprovementPerEvaluationHour": 3.4722508342501563
           },
           "lostWins": 3,
           "rateDelta": -3.1347889344471214,
           "seed": 45,
-          "outerInclusiveRateDelta": -3.133569710107388
+          "outerInclusiveRateDelta": -2.7222653380809967
         },
         {
           "control": {
@@ -540,8 +542,8 @@
               "3e3a9c26b9906d9d"
             ],
             "wins": 4,
-            "outerInclusiveSeconds": 8.934434634833343,
-            "outerInclusiveImprovementPerEvaluationHour": 7.051066635894923
+            "outerInclusiveSeconds": 10.178400936979171,
+            "outerInclusiveImprovementPerEvaluationHour": 6.189311499351712
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -570,13 +572,13 @@
               "23ffd72a16a1155a"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.645297092833344,
-            "outerInclusiveImprovementPerEvaluationHour": 3.8879521694996324
+            "outerInclusiveSeconds": 10.889263394979173,
+            "outerInclusiveImprovementPerEvaluationHour": 3.44380077855777
           },
           "lostWins": 3,
           "rateDelta": -3.164353098596313,
           "seed": 46,
-          "outerInclusiveRateDelta": -3.1631144663952906
+          "outerInclusiveRateDelta": -2.745510720793942
         },
         {
           "control": {
@@ -609,8 +611,8 @@
               "3e3a9c26b9906d9d"
             ],
             "wins": 4,
-            "outerInclusiveSeconds": 8.924007175833344,
-            "outerInclusiveImprovementPerEvaluationHour": 7.059305614954819
+            "outerInclusiveSeconds": 10.167973477979173,
+            "outerInclusiveImprovementPerEvaluationHour": 6.195658761373735
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -639,13 +641,13 @@
               "23ffd72a16a1155a"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.682514759833342,
-            "outerInclusiveImprovementPerEvaluationHour": 3.8730076522181687
+            "outerInclusiveSeconds": 10.926481061979171,
+            "outerInclusiveImprovementPerEvaluationHour": 3.4320705398959657
           },
           "lostWins": 3,
           "rateDelta": -3.1875524388497385,
           "seed": 47,
-          "outerInclusiveRateDelta": -3.18629796273665
+          "outerInclusiveRateDelta": -2.763588221477769
         },
         {
           "control": {
@@ -678,8 +680,8 @@
               "3e3a9c26b9906d9d"
             ],
             "wins": 4,
-            "outerInclusiveSeconds": 8.927134967833343,
-            "outerInclusiveImprovementPerEvaluationHour": 7.056832252593035
+            "outerInclusiveSeconds": 10.171101269979172,
+            "outerInclusiveImprovementPerEvaluationHour": 6.193753487658119
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -708,13 +710,13 @@
               "23ffd72a16a1155a"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.697290592833342,
-            "outerInclusiveImprovementPerEvaluationHour": 3.8671063219724617
+            "outerInclusiveSeconds": 10.94125689497917,
+            "outerInclusiveImprovementPerEvaluationHour": 3.427435633538453
           },
           "lostWins": 3,
           "rateDelta": -3.1909825364164806,
           "seed": 48,
-          "outerInclusiveRateDelta": -3.1897259306205736
+          "outerInclusiveRateDelta": -2.7663178541196665
         }
       ],
       "lostWinReasons": {
@@ -903,8 +905,8 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 8.922634491770818,
-            "outerInclusiveImprovementPerEvaluationHour": 5.927483606109687
+            "outerInclusiveSeconds": 10.166600793916647,
+            "outerInclusiveImprovementPerEvaluationHour": 5.202207772820905
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -933,13 +935,13 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.613728324770818,
-            "outerInclusiveImprovementPerEvaluationHour": 5.501379681908286
+            "outerInclusiveSeconds": 10.857694626916647,
+            "outerInclusiveImprovementPerEvaluationHour": 4.871086495854014
           },
           "lostWins": 0,
           "rateDelta": -0.42666343288818176,
           "seed": 41,
-          "outerInclusiveRateDelta": -0.4261039242014011
+          "outerInclusiveRateDelta": -0.33112127696689075
         },
         {
           "control": {
@@ -969,8 +971,8 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 8.92589144877082,
-            "outerInclusiveImprovementPerEvaluationHour": 5.925320734273959
+            "outerInclusiveSeconds": 10.169857750916648,
+            "outerInclusiveImprovementPerEvaluationHour": 5.200541735061466
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -999,13 +1001,13 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.66831528377082,
-            "outerInclusiveImprovementPerEvaluationHour": 5.470319090861586
+            "outerInclusiveSeconds": 10.912281585916649,
+            "outerInclusiveImprovementPerEvaluationHour": 4.8467196577421925
           },
           "lostWins": 0,
           "rateDelta": -0.45559735867493156,
           "seed": 42,
-          "outerInclusiveRateDelta": -0.45500164341237337
+          "outerInclusiveRateDelta": -0.35382207731927373
         },
         {
           "control": {
@@ -1035,8 +1037,8 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 8.925394615770818,
-            "outerInclusiveImprovementPerEvaluationHour": 5.925650567855903
+            "outerInclusiveSeconds": 10.169360917916647,
+            "outerInclusiveImprovementPerEvaluationHour": 5.200795812065195
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -1065,13 +1067,13 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.66630024177082,
-            "outerInclusiveImprovementPerEvaluationHour": 5.47145943643805
+            "outerInclusiveSeconds": 10.910266543916649,
+            "outerInclusiveImprovementPerEvaluationHour": 4.8476148094447895
           },
           "lostWins": 0,
           "rateDelta": -0.45478586230176177,
           "seed": 43,
-          "outerInclusiveRateDelta": -0.4541911314178524
+          "outerInclusiveRateDelta": -0.3531810026204054
         },
         {
           "control": {
@@ -1101,8 +1103,8 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 8.926772199770818,
-            "outerInclusiveImprovementPerEvaluationHour": 5.924736118463761
+            "outerInclusiveSeconds": 10.170738501916647,
+            "outerInclusiveImprovementPerEvaluationHour": 5.200091386020162
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -1131,13 +1133,13 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.581591616770819,
-            "outerInclusiveImprovementPerEvaluationHour": 5.5198313379071875
+            "outerInclusiveSeconds": 10.825557918916648,
+            "outerInclusiveImprovementPerEvaluationHour": 4.885546783770119
           },
           "lostWins": 0,
           "rateDelta": -0.4054371843213289,
           "seed": 44,
-          "outerInclusiveRateDelta": -0.4049047805565733
+          "outerInclusiveRateDelta": -0.3145446022500433
         },
         {
           "control": {
@@ -1167,8 +1169,8 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 8.926444948770818,
-            "outerInclusiveImprovementPerEvaluationHour": 5.92495332428653
+            "outerInclusiveSeconds": 10.170411250916647,
+            "outerInclusiveImprovementPerEvaluationHour": 5.200258708173041
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -1197,13 +1199,13 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.630484699770818,
-            "outerInclusiveImprovementPerEvaluationHour": 5.491807663070062
+            "outerInclusiveSeconds": 10.874451001916647,
+            "outerInclusiveImprovementPerEvaluationHour": 4.863580668482354
           },
           "lostWins": 0,
           "rateDelta": -0.4337138134177412,
           "seed": 45,
-          "outerInclusiveRateDelta": -0.4331456612164688
+          "outerInclusiveRateDelta": -0.3366780396906872
         },
         {
           "control": {
@@ -1233,8 +1235,8 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 8.927511491770819,
-            "outerInclusiveImprovementPerEvaluationHour": 5.92424548789795
+            "outerInclusiveSeconds": 10.171477793916647,
+            "outerInclusiveImprovementPerEvaluationHour": 5.1997134285552935
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -1263,13 +1265,13 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.62825932477082,
-            "outerInclusiveImprovementPerEvaluationHour": 5.493076981964159
+            "outerInclusiveSeconds": 10.872225626916649,
+            "outerInclusiveImprovementPerEvaluationHour": 4.864576167582678
           },
           "lostWins": 0,
           "rateDelta": -0.43173409256253237,
           "seed": 46,
-          "outerInclusiveRateDelta": -0.4311685059337904
+          "outerInclusiveRateDelta": -0.33513726097261554
         },
         {
           "control": {
@@ -1299,8 +1301,8 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 8.929909865770819,
-            "outerInclusiveImprovementPerEvaluationHour": 5.922654368103756
+            "outerInclusiveSeconds": 10.173876167916648,
+            "outerInclusiveImprovementPerEvaluationHour": 5.198487656068124
           },
           "ledger": {
             "authoritativeConfirmations": 0,
@@ -1327,7 +1329,7 @@
             "unresolvedSamples": 38,
             "winningEnhancements": [],
             "wins": 0,
-            "outerInclusiveSeconds": 9.565446116770818,
+            "outerInclusiveSeconds": 10.809412418916647,
             "outerInclusiveImprovementPerEvaluationHour": null
           },
           "lostWins": 1,
@@ -1363,8 +1365,8 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 8.929599698770819,
-            "outerInclusiveImprovementPerEvaluationHour": 5.922860089748551
+            "outerInclusiveSeconds": 10.173566000916647,
+            "outerInclusiveImprovementPerEvaluationHour": 5.198646145168277
           },
           "ledger": {
             "authoritativeConfirmations": 2,
@@ -1393,13 +1395,13 @@
               "29e2ed8426f9e3ed"
             ],
             "wins": 1,
-            "outerInclusiveSeconds": 9.613628824770819,
-            "outerInclusiveImprovementPerEvaluationHour": 5.501436620582362
+            "outerInclusiveSeconds": 10.857595126916648,
+            "outerInclusiveImprovementPerEvaluationHour": 4.871131134938514
           },
           "lostWins": 0,
           "rateDelta": -0.4219766107118099,
           "seed": 48,
-          "outerInclusiveRateDelta": -0.42142346916618845
+          "outerInclusiveRateDelta": -0.3275150102297628
         }
       ],
       "lostWinReasons": {
@@ -1588,8 +1590,8 @@
               "edf9bdc13f97f8a6"
             ],
             "wins": 2,
-            "outerInclusiveSeconds": 8.91697917052085,
-            "outerInclusiveImprovementPerEvaluationHour": 4.658557754099586
+            "outerInclusiveSeconds": 10.160945472666679,
+            "outerInclusiveImprovementPerEvaluationHour": 4.088228065953041
           },
           "ledger": {
             "authoritativeConfirmations": 0,
@@ -1616,7 +1618,7 @@
             "unresolvedSamples": 32,
             "winningEnhancements": [],
             "wins": 0,
-            "outerInclusiveSeconds": 9.57323487952085,
+            "outerInclusiveSeconds": 10.817201181666679,
             "outerInclusiveImprovementPerEvaluationHour": null
           },
           "lostWins": 2,
@@ -1653,8 +1655,8 @@
               "edf9bdc13f97f8a6"
             ],
             "wins": 2,
-            "outerInclusiveSeconds": 8.920670462520851,
-            "outerInclusiveImprovementPerEvaluationHour": 4.656630085429222
+            "outerInclusiveSeconds": 10.16463676466668,
+            "outerInclusiveImprovementPerEvaluationHour": 4.086743424258171
           },
           "ledger": {
             "authoritativeConfirmations": 0,
@@ -1681,7 +1683,7 @@
             "unresolvedSamples": 24,
             "winningEnhancements": [],
             "wins": 0,
-            "outerInclusiveSeconds": 9.48214500452085,
+            "outerInclusiveSeconds": 10.72611130666668,
             "outerInclusiveImprovementPerEvaluationHour": null
           },
           "lostWins": 2,
@@ -1718,8 +1720,8 @@
               "edf9bdc13f97f8a6"
             ],
             "wins": 2,
-            "outerInclusiveSeconds": 8.926236378520851,
-            "outerInclusiveImprovementPerEvaluationHour": 4.653726463925209
+            "outerInclusiveSeconds": 10.17020268066668,
+            "outerInclusiveImprovementPerEvaluationHour": 4.084506844385853
           },
           "ledger": {
             "authoritativeConfirmations": 0,
@@ -1746,7 +1748,7 @@
             "unresolvedSamples": 28,
             "winningEnhancements": [],
             "wins": 0,
-            "outerInclusiveSeconds": 9.47807621352085,
+            "outerInclusiveSeconds": 10.72204251566668,
             "outerInclusiveImprovementPerEvaluationHour": null
           },
           "lostWins": 2,
@@ -1783,8 +1785,8 @@
               "edf9bdc13f97f8a6"
             ],
             "wins": 2,
-            "outerInclusiveSeconds": 8.922460296520851,
-            "outerInclusiveImprovementPerEvaluationHour": 4.65569597145445
+            "outerInclusiveSeconds": 10.16642659866668,
+            "outerInclusiveImprovementPerEvaluationHour": 4.086023939170759
           },
           "ledger": {
             "authoritativeConfirmations": 0,
@@ -1811,7 +1813,7 @@
             "unresolvedSamples": 30,
             "winningEnhancements": [],
             "wins": 0,
-            "outerInclusiveSeconds": 9.52885046252085,
+            "outerInclusiveSeconds": 10.772816764666679,
             "outerInclusiveImprovementPerEvaluationHour": null
           },
           "lostWins": 2,
@@ -1848,8 +1850,8 @@
               "edf9bdc13f97f8a6"
             ],
             "wins": 2,
-            "outerInclusiveSeconds": 8.922860712520851,
-            "outerInclusiveImprovementPerEvaluationHour": 4.655487045727806
+            "outerInclusiveSeconds": 10.16682701466668,
+            "outerInclusiveImprovementPerEvaluationHour": 4.085863012919209
           },
           "ledger": {
             "authoritativeConfirmations": 0,
@@ -1876,7 +1878,7 @@
             "unresolvedSamples": 22,
             "winningEnhancements": [],
             "wins": 0,
-            "outerInclusiveSeconds": 9.394147670520852,
+            "outerInclusiveSeconds": 10.63811397266668,
             "outerInclusiveImprovementPerEvaluationHour": null
           },
           "lostWins": 2,
@@ -1913,8 +1915,8 @@
               "edf9bdc13f97f8a6"
             ],
             "wins": 2,
-            "outerInclusiveSeconds": 8.92380733752085,
-            "outerInclusiveImprovementPerEvaluationHour": 4.6549931981739565
+            "outerInclusiveSeconds": 10.16777363966668,
+            "outerInclusiveImprovementPerEvaluationHour": 4.08548261695332
           },
           "ledger": {
             "authoritativeConfirmations": 0,
@@ -1941,7 +1943,7 @@
             "unresolvedSamples": 30,
             "winningEnhancements": [],
             "wins": 0,
-            "outerInclusiveSeconds": 9.403094504520851,
+            "outerInclusiveSeconds": 10.64706080666668,
             "outerInclusiveImprovementPerEvaluationHour": null
           },
           "lostWins": 2,
@@ -1978,8 +1980,8 @@
               "edf9bdc13f97f8a6"
             ],
             "wins": 2,
-            "outerInclusiveSeconds": 8.92874508752085,
-            "outerInclusiveImprovementPerEvaluationHour": 4.652418906665019
+            "outerInclusiveSeconds": 10.172711389666679,
+            "outerInclusiveImprovementPerEvaluationHour": 4.083499557470049
           },
           "ledger": {
             "authoritativeConfirmations": 0,
@@ -2006,7 +2008,7 @@
             "unresolvedSamples": 32,
             "winningEnhancements": [],
             "wins": 0,
-            "outerInclusiveSeconds": 9.447478129520851,
+            "outerInclusiveSeconds": 10.69144443166668,
             "outerInclusiveImprovementPerEvaluationHour": null
           },
           "lostWins": 2,
@@ -2043,8 +2045,8 @@
               "edf9bdc13f97f8a6"
             ],
             "wins": 2,
-            "outerInclusiveSeconds": 8.92539879552085,
-            "outerInclusiveImprovementPerEvaluationHour": 4.654163181909709
+            "outerInclusiveSeconds": 10.16936509766668,
+            "outerInclusiveImprovementPerEvaluationHour": 4.084843258061967
           },
           "ledger": {
             "authoritativeConfirmations": 0,
@@ -2071,7 +2073,7 @@
             "unresolvedSamples": 24,
             "winningEnhancements": [],
             "wins": 0,
-            "outerInclusiveSeconds": 9.495074003520852,
+            "outerInclusiveSeconds": 10.73904030566668,
             "outerInclusiveImprovementPerEvaluationHour": null
           },
           "lostWins": 2,
@@ -2102,18 +2104,18 @@
       3.125
     ],
     "outerInclusiveRateMeanByMeasuredRun": [
-      -3.1657085664052946,
-      -0.4322770165578068
+      -2.7475318524790255,
+      -0.33599989572138267
     ],
     "outerInclusiveRateMean95PercentInterval": [
-      -3.1657085664052946,
-      -0.4322770165578068
+      -2.7475318524790255,
+      -0.33599989572138267
     ],
     "rateRunsMeasured": 2,
     "rateRunsPlanned": 3,
     "missingRate": "Run 3 has no ledger full-target measurement; its rate is unknown and excluded, never imputed as zero"
   },
-  "accounting": "Primary comparison charges setup, search/data preparation, calibration, freeze, replay, sample preparation, scoring, ledger and complete outer freeze/run commands. Shared costs split equally across three runs and both arms/eight seeds. Post-validation audit is reported separately; timing-receipt writes and research report generation are outside the comparison. Component timers overlap; totalSeconds is authoritative, not their sum.",
+  "accounting": "Primary comparison charges the complete setup-through-validation window, including preparation between commands, search/data preparation, calibration, freeze, replay, sample preparation, scoring, ledger and outer freeze/run commands. Shared preparation costs split equally across three runs and both arms/eight seeds. Timing-receipt writes within that window are included. Post-validation audit is reported separately; subsequent checks and research report generation are outside the comparison. Component timers overlap; outerInclusiveSeconds is authoritative, not their sum.",
   "limitations": [
     "Shared-host dev-build timings are indicative; removal has deterministic lost-win evidence in all three runs.",
     "Single public dataset, shallow custom residual-stump searches; no production-fleet or cross-application generalisation.",

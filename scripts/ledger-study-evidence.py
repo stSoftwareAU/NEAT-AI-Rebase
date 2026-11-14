@@ -7,6 +7,7 @@ It invokes ordinary replay in dry-run mode; it never scores validation again.
 """
 
 import collections
+import datetime
 import hashlib
 import itertools
 import json
@@ -38,6 +39,21 @@ def bootstrap_interval(values):
         return None
     means = sorted(statistics.mean(sample) for sample in itertools.product(values, repeat=len(values)))
     return [means[math.ceil(0.025 * len(means)) - 1], means[math.ceil(0.975 * len(means)) - 1]]
+
+
+def comparison_window(preparation, executions):
+    """Charge preparation gaps between timed commands through final validation."""
+    costs = [preparation["setupSeconds"], preparation["seconds"],
+             *(entry["seconds"] for entry in executions)]
+    require(all(math.isfinite(value) and value >= 0 for value in costs),
+            "comparison costs must be finite and non-negative")
+    began = datetime.datetime.fromisoformat(preparation["beganAt"])
+    finished = max(datetime.datetime.fromisoformat(entry["completedAt"])
+                   for entry in executions if entry["phase"] == "run")
+    window = (finished - began).total_seconds() + preparation["setupSeconds"]
+    gap = window - sum(costs)
+    require(gap >= 0, "comparison window is shorter than its timed commands")
+    return window, gap
 
 
 def replay(binary, parent, patch, training, workspace):
@@ -97,6 +113,7 @@ def analyse(study, binary):
     executions = read(study / "execution-commands.json")
     preparation = read(study / "preparation.json")
     outer_preparation = read(study.parent / "prepare-command.json")
+    window_seconds, preparation_gap = comparison_window(outer_preparation, executions)
     data = read(study / "data.json")
     runs = []
     seen_ancestry = set()
@@ -133,7 +150,8 @@ def analyse(study, binary):
         run_residual = outer_run - measured_run
         freeze_residual = outer_freeze - manifest["freezeSeconds"]
         require(run_residual >= 0 and freeze_residual >= 0, "outer accounting boundary is inconsistent")
-        shared_residual = (run_residual + freeze_residual) / (2 * len(pairs))
+        shared_residual = ((run_residual + freeze_residual) / (2 * len(pairs))
+                           + preparation_gap / (3 * 2 * len(pairs)))
         lost_reasons = collections.Counter()
         for pair in pairs:
             seed = pair["seed"]
@@ -184,6 +202,7 @@ def analyse(study, binary):
         "discoveryRows": data["discoveryRows"], "calibrationRows": data["calibrationRows"], "validationRows": data["validationRows"],
         "sampleCount": preparation["sampleCount"], "minImprovement": preparation["minImprovement"],
         "preparationCommandSeconds": outer_preparation["seconds"], "setupSeconds": outer_preparation["setupSeconds"],
+        "comparisonWindowSeconds": window_seconds, "interCommandPreparationSeconds": preparation_gap,
         "searchAndDataPreparationSeconds": preparation["seconds"], "calibrationSeconds": preparation["calibrationSeconds"],
         "preparationNativeCalls": preparation["nativeCalls"], "preparationScoredRecords": preparation["scoredRecords"],
         "postValidationAuditSeconds": time.perf_counter() - started,
@@ -197,7 +216,7 @@ def analyse(study, binary):
             "rateRunsMeasured": len(rate_means), "rateRunsPlanned": len(runs),
             "missingRate": "Run 3 has no ledger full-target measurement; its rate is unknown and excluded, never imputed as zero",
         },
-        "accounting": "Primary comparison charges setup, search/data preparation, calibration, freeze, replay, sample preparation, scoring, ledger and complete outer freeze/run commands. Shared costs split equally across three runs and both arms/eight seeds. Post-validation audit is reported separately; timing-receipt writes and research report generation are outside the comparison. Component timers overlap; totalSeconds is authoritative, not their sum.",
+        "accounting": "Primary comparison charges the complete setup-through-validation window, including preparation between commands, search/data preparation, calibration, freeze, replay, sample preparation, scoring, ledger and outer freeze/run commands. Shared preparation costs split equally across three runs and both arms/eight seeds. Timing-receipt writes within that window are included. Post-validation audit is reported separately; subsequent checks and research report generation are outside the comparison. Component timers overlap; outerInclusiveSeconds is authoritative, not their sum.",
         "limitations": [
             "Shared-host dev-build timings are indicative; removal has deterministic lost-win evidence in all three runs.",
             "Single public dataset, shallow custom residual-stump searches; no production-fleet or cross-application generalisation.",
