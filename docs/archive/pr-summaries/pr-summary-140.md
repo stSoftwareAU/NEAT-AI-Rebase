@@ -31,16 +31,16 @@ sources match Develop. Closes #140.
 ## Evidence
 
 Backend/CLI research only; no visual surface changed. The final diff adds study
-records and neutral analysis tooling, with no runtime, dependency or workflow
-change against Develop.
+records and neutral analysis tooling using the Python standard library. Runtime
+sources match Develop.
 
 - `docs/experiments/ledger-140-preregistration.json` was committed before calibration; `docs/experiments/ledger-140-calibration-lock.json` before validation. Separate calibration selected 128 records and a 0.01 margin, with four calibration wins and zero false rejections across the calibration seeds.
 - `docs/experiments/ledger-140-real-data-results.json` contains 24 paired distributions, input/lineage/payload commitments, stage losses, uncertainty, coverage, failures and outer-inclusive accounting. All 72 accepted ancestry edges replayed through the ordinary CLI; twelve complete ancestry lists are disjoint.
 - All three runs completed with zero operational failures or interruptions. The policy avoided 957 repeated failed stage evaluations but lost 42 paired control-confirmed patch observations: 40 at peer gates and two at sample gates. Control confirmed seven distinct winning identities across runs; the policy confirmed two, transferable to both peers and the target.
-- Control used 1,152 scorer calls and 1,152 full target evaluations; the assisted arm used 2,007 calls and 28 full target evaluations. Workflow coverage was complete in both arms. Outer-inclusive totals were 214.246 and 229.728 seconds, including shared setup/search/calibration and complete freeze/run command costs; timings are indicative.
+- Control used 1,152 scorer calls and 1,152 full target evaluations; the assisted arm used 2,007 calls and 28 full target evaluations. Workflow coverage was complete in both arms. Outer-inclusive totals were 244.101 and 259.583 seconds, including shared setup/search/calibration, inter-command preparation and complete freeze/run command costs; timings are indicative.
 
 The exact descriptive interval across the two measured independent-run mean rate
-differences is `[-3.16571, -0.43228]` score gain/hour; the third run's rate remains
+differences is `[-2.74753, -0.33600]` score gain/hour; the third run's rate remains
 unknown. Across all three runs the lost-win mean per sample pair has descriptive
 interval `[0.125, 3.125]`. One dataset and three shallow custom discovery runs do
 not establish production-scale or cross-application effect sizes.
@@ -66,12 +66,12 @@ Issue provenance: #140 — Experiment: Replayable experiment ledger and cross-li
 
 ## Test Plan
 
-- Passed `timeout 20 python3 -B scripts/test_ledger_study_evidence.py < /dev/null`: three tests. `BootstrapTests.test_two_run_interval_keeps_both_empirical_tails` and `test_three_run_interval_keeps_extreme_resamples` first failed under the initial new report calculation, then passed with inverse empirical CDF endpoints. `test_unreplicated_or_missing_rates_have_no_interval` preserves absent uncertainty. This is new report coverage, not a claim of a base-branch defect.
+- Passed `timeout 20 python3 -B scripts/test_ledger_study_evidence.py < /dev/null`: eight tests. `BootstrapTests.test_two_run_interval_keeps_both_empirical_tails` and `test_three_run_interval_keeps_extreme_resamples` first failed under the initial new report calculation, then passed with inverse empirical CDF endpoints. `test_unreplicated_or_missing_rates_have_no_interval` preserves absent uncertainty. The five `AccountingTests` cases protect inter-command preparation charging, a contiguous window, inconsistent clocks, invalid costs and a missing start timestamp. This is new report coverage, not a claim of a base-branch defect.
 - Passed the actual `scripts/ledger-study-evidence.py` command against retained study artefacts. It verified frozen input hashes and native source deltas, dry-replayed accepted ancestry, checked disjoint histories and complete failure-free paired coverage, and generated the committed aggregate report. A real final-snapshot check returned CLI exit 3 with `nothingToDo`; the auditor handles that specific expected outcome.
-- Passed `timeout 1200 ./quality.sh < /dev/null`: Bash syntax, ShellCheck, runlib contract, actionlint, cargo-deny, formatting, Clippy, workspace tests and documentation build. Disk checks showed about 487 GiB workspace and 497 GiB Cargo-target free; no budget refusal file was present.
+- Passed `timeout 1200 ./quality.sh < /dev/null`: Bash syntax, ShellCheck, runlib contract, actionlint, cargo-deny, formatting, Clippy, workspace tests and documentation build. Disk checks showed about 487 GiB workspace and 495 GiB Cargo-target free; no budget refusal file was present.
 - Existing `rebase/tests/race_conditions.rs` (15 tests) and `rebase/tests/screen_budget.rs` (five tests) passed both targeted execution and the final full gate. No Develop test assertion was changed or removed. The checkpoint-only 16-test experiment suite passed before its runtime and fixture were retired; it is historical coverage, not a test suite shipped at head.
 - Passed `timeout 60 markdownlint-cli2 README.md docs/ledger-experiment.md < /dev/null`: ten Markdown files, zero issues. Re-read the protocol through reproduction and limitations, and swept README/docs/source for retired example/interface names and stale availability claims; surviving example references explicitly concern the archived pin.
-- Three completed historical restarts returned unchanged ledger hashes and no new scorer calls. No demonstrated acceptance-gate or runtime accounting repair was necessary; the report separately charges outer command residuals. Shared rule copies: none remain for the removed policy; the report has one bootstrap implementation called by its tests and real report path.
+- Three completed historical restarts returned unchanged ledger hashes and no new scorer calls. No acceptance-gate repair was necessary. Whole-window reconciliation first failed with 59.710 seconds uncharged; after adding inter-command preparation, the public totals equal the observed 503.684-second setup-through-validation window. The report charges that gap and outer command residuals without altering frozen native evidence. Shared rule copies: none remain for the removed policy; the report has one bootstrap implementation called by its tests and real report path.
 
 Security check: local CLI arguments use argument arrays; output creation refuses
 replacement; no new network endpoint, authorisation surface or dependency was
