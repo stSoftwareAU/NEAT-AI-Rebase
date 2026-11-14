@@ -242,6 +242,17 @@ inputs and returns its saved results without another scorer call.
 
 ## Current evidence and coverage
 
+The separately [registered real-data study](experiments/ledger-140-preregistration.json)
+uses the UCI Wine Quality regression data with three independent discovery runs.
+`ledger_study <headerless-numeric.csv> <rust_scorer> <new-directory>` prepares
+disjoint discovery, calibration and validation partitions, independently optimises
+receiving parents and a donor, and retains native search receipts and ancestry
+snapshots. It selects screening settings on calibration records before writing
+drafts. It never scores validation. The exported enhancement envelopes have neutral
+zero score claims; actual discovery-only measurements live in the source receipts,
+not in fields that could be mistaken for validation measurements. Private study
+artefacts stay outside this checkout.
+
 The repository supplies deterministic correctness fixtures, not established
 independent evolved lineages or representative corpora. Their hand-constructed
 histories are test inputs, not provenance evidence. No representative benefit or
