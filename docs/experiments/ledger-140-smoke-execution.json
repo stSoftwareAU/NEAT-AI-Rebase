@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "evidenceClass": "smoke",
+  "representative": false,
+  "completedAt": "2026-11-13T23:42:09.128076+00:00",
+  "scorerSource": {
+    "repository": "stSoftwareAU/NEAT-AI-scorer",
+    "commit": "742c5df30fc98ece3afe784be1aca18f925b47b3",
+    "packageVersion": "1.1.103"
+  },
+  "runnerProfile": "dev",
+  "scorerProfile": "dev",
+  "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "outerRun": {
+    "seconds": 5.59644983599992,
+    "exitCode": 0,
+    "scope": "complete run command, including result serialisation; excludes separately recorded preparation and freeze"
+  },
+  "ledgerSha256": "96dd2b344c46d27e5d9e8692897386a14521632b459cee505c2dd3ae80b5ed22",
+  "commands": [
+    "cargo build --locked --example ledger_experiment",
+    "ledger_experiment prepare-smoke <new-directory> <rust_scorer>",
+    "ledger_experiment freeze <new-directory>/draft.json <new-directory>/manifest.json",
+    "ledger_experiment run <new-directory>/manifest.json <new-directory>/run"
+  ],
+  "limitations": [
+    "Synthetic hand-built roots, parents and patches; no independent evolution.",
+    "Fixed smoke parameters; no calibration study.",
+    "Four sample seeds reuse the same parents and two patches; not four independent discovery runs.",
+    "Shared parallel host; dev-build timings are indicative and do not demonstrate an optimisation benefit.",
+    "The archived manifest records original machine paths; reproduce by generating a fresh local manifest."
+  ]
+}

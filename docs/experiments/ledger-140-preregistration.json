@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "registeredBeforeValidation": true,
+  "researchMethod": "https://arxiv.org/html/2610.05950v1",
+  "scope": "Bounded real-data structural replay study; not a reproduction of adaptive LLM discovery or a production-fleet claim",
+  "data": {
+    "source": "https://archive.ics.uci.edu/dataset/186/wine+quality",
+    "attribution": "Cortez, Cerdeira, Almeida, Matos and Reis (2009), Wine Quality, UCI, doi:10.24432/C56S3T, CC BY 4.0",
+    "mirror": "jbrownlee/Datasets@d20fcb6402ae34e653d4513b00f39257bb37ed7f/winequality-white.csv",
+    "sha256": "659d419fff887f225bf977d20520bb64a64cae203e460087f809721d4430ba27",
+    "split": "Deduplicate complete numeric rows before seeded shuffle (140); first 50% discovery, next 25% calibration, remainder validation",
+    "normalisation": "Column mean and population standard deviation fitted to discovery only, including target; store little-endian f32 records"
+  },
+  "discovery": {
+    "independentRuns": 3,
+    "rootSeeds": [[1001, 1002, 1003, 1004], [2001, 2002, 2003, 2004], [3001, 3002, 3003, 3004]],
+    "roots": "Independent random 12-hidden-TANH networks; first three become receiving parents, fourth is donor",
+    "search": "Six generations per root, eight residual stumps per generation; retain best native-scorer improvement only; archive every attempt and accepted creature",
+    "proposals": "Random feature and observed discovery threshold; branch mean residual times random scale from [-1, 0.25, 0.5, 1, 2, 4]",
+    "candidateStream": "24 further donor proposals, all retained regardless of source success, followed by the same 24 payloads in the same order",
+    "ancestry": "No cross-lineage inheritance; complete canonical root-to-parent hashes backed by retained creature snapshots and native search measurements"
+  },
+  "calibration": {
+    "sampleCounts": [32, 64, 128, 256],
+    "margins": [0.00000001, 0.00001, 0.001, 0.01],
+    "sampleSeeds": [71, 72, 73, 74],
+    "selection": "Smallest sample with zero false screen rejections of calibration target wins over all three runs and four seeds; within sample choose smallest margin; if none qualifies report inconclusive and do not run validation",
+    "candidateSpecificTuning": false
+  },
+  "validation": {
+    "sampleSeeds": [41, 42, 43, 44, 45, 46, 47, 48],
+    "repetitions": "Eight fixed-input sample pairs within each of three independent discovery runs; no adaptive proposals or validation-based reselection",
+    "perArmPerSeed": {"calls": 192, "seconds": 600, "evaluationTimeoutSeconds": 10},
+    "scorer": "Pinned native scorer, CPU MSE, cleared environment and one thread, same binary in both arms",
+    "parents": "Immutable; single-enhancement replay, both unrelated peer checks even after first rejection, full target judge before acceptance"
+  },
+  "maintenance": {
+    "minimumPairedRunsPerDiscoveryRun": 8,
+    "minimumRateGain": 0.01,
+    "maximumLostWins": 0,
+    "retain": "Every run complete and failure-free, no lost wins, lower paired rate interval above minimum gain in each run; assess limited independent-run uncertainty separately",
+    "remove": "Any complete real-data run exceeds lost-win allowance, or its paired rate interval lies wholly below zero; timing evidence alone remains indicative on the shared host",
+    "inconclusive": "Calibration fails, incomplete coverage, operational failure, or neither retain nor remove; never claim optimisation benefit",
+    "actionOnRemove": "Remove optional sample/peer/cache runtime policy; preserve experiment evidence and ordinary replay"
+  },
+  "accounting": "Charge input inspection, data retrieval/preparation, builds, search, calibration, freeze, replay, sample materialisation, scoring, ledger writes and outer-command residual; split shared costs equally; never count eight sample seeds as eight independent discovery runs",
+  "privacy": "Keep corpora, creature snapshots, raw source/search receipts and path-bearing manifests outside checkout; publish application-agnostic aggregate outcomes and cryptographic commitments only"
+}

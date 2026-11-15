@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "registeredCommit": "db75e1a",
+  "validationScored": false,
+  "sampleCount": 128,
+  "minImprovement": 0.01,
+  "calibrationTrials": [
+    {
+      "calibrationTargetWins": 34,
+      "falseRejections": 47,
+      "margin": 1e-08,
+      "sampleCount": 32
+    },
+    {
+      "calibrationTargetWins": 34,
+      "falseRejections": 47,
+      "margin": 1e-05,
+      "sampleCount": 32
+    },
+    {
+      "calibrationTargetWins": 29,
+      "falseRejections": 38,
+      "margin": 0.001,
+      "sampleCount": 32
+    },
+    {
+      "calibrationTargetWins": 4,
+      "falseRejections": 3,
+      "margin": 0.01,
+      "sampleCount": 32
+    },
+    {
+      "calibrationTargetWins": 34,
+      "falseRejections": 37,
+      "margin": 1e-08,
+      "sampleCount": 64
+    },
+    {
+      "calibrationTargetWins": 34,
+      "falseRejections": 36,
+      "margin": 1e-05,
+      "sampleCount": 64
+    },
+    {
+      "calibrationTargetWins": 29,
+      "falseRejections": 24,
+      "margin": 0.001,
+      "sampleCount": 64
+    },
+    {
+      "calibrationTargetWins": 4,
+      "falseRejections": 2,
+      "margin": 0.01,
+      "sampleCount": 64
+    },
+    {
+      "calibrationTargetWins": 34,
+      "falseRejections": 31,
+      "margin": 1e-08,
+      "sampleCount": 128
+    },
+    {
+      "calibrationTargetWins": 34,
+      "falseRejections": 30,
+      "margin": 1e-05,
+      "sampleCount": 128
+    },
+    {
+      "calibrationTargetWins": 29,
+      "falseRejections": 17,
+      "margin": 0.001,
+      "sampleCount": 128
+    },
+    {
+      "calibrationTargetWins": 4,
+      "falseRejections": 0,
+      "margin": 0.01,
+      "sampleCount": 128
+    },
+    {
+      "calibrationTargetWins": 34,
+      "falseRejections": 20,
+      "margin": 1e-08,
+      "sampleCount": 256
+    },
+    {
+      "calibrationTargetWins": 34,
+      "falseRejections": 20,
+      "margin": 1e-05,
+      "sampleCount": 256
+    },
+    {
+      "calibrationTargetWins": 29,
+      "falseRejections": 8,
+      "margin": 0.001,
+      "sampleCount": 256
+    },
+    {
+      "calibrationTargetWins": 4,
+      "falseRejections": 0,
+      "margin": 0.01,
+      "sampleCount": 256
+    }
+  ],
+  "independentDiscoveryRuns": 3,
+  "sampleSeedPairsPerRun": 8,
+  "sourceOutcomes": [
+    {
+      "accepted": 14,
+      "rejected": 10
+    },
+    {
+      "accepted": 10,
+      "rejected": 14
+    },
+    {
+      "accepted": 13,
+      "rejected": 11
+    }
+  ],
+  "setupAndOuterPreparationSeconds": 362.3466932919999,
+  "selectionControl": "Require at least one calibration win to avoid a vacuous zero false-rejection count; satisfied by four wins at the selected margin"
+}

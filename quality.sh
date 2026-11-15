@@ -37,6 +37,13 @@ echo "shellcheck: all scripts passed"
 echo "Checking scripts/runlib.sh already-installed contract (Issues #108, #107)..."
 ./scripts/test-runlib.sh
 
+echo "Running the #140 study receipt auditor tests (python3 standard library)..."
+if ! command -v python3 &>/dev/null; then
+  echo "python3 is required for scripts/test_ledger_study_evidence.py"
+  exit 1
+fi
+python3 -B scripts/test_ledger_study_evidence.py < /dev/null
+
 echo "Linting GitHub Actions workflows..."
 ./scripts/actionlint.sh
 

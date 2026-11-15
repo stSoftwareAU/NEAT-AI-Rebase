@@ -141,6 +141,12 @@ beats publishing that creature, the second grafts every scorer-verified
 discovery the fittest creature is missing back onto it. Each carries its own
 usage in the file header.
 
+The replayable ledger study completed three independent real-data discovery runs.
+Its fixed-sample/two-peer policy lost target-confirmed wins and was removed under
+the registered maintenance rule. Ordinary replay and screening are unchanged.
+[`docs/ledger-experiment.md`](docs/ledger-experiment.md) records the results,
+limitations and archived-source reproduction commands.
+
 ### Command line
 
 ```text
@@ -426,6 +432,7 @@ rather than on a variance estimate.
 | [`docs/idempotence.md`](docs/idempotence.md) | how producers mark enhancements and how duplicate application is avoided |
 | [`docs/failure-model.md`](docs/failure-model.md) | every fail-closed case, and what is safe to retry |
 | [`docs/integration.md`](docs/integration.md) | the producer checklist, with worked Forest and Ockham examples |
+| [`docs/ledger-experiment.md`](docs/ledger-experiment.md) | completed paired study, removal decision, evidence and archived reproduction |
 
 ## Relationship to other projects
 

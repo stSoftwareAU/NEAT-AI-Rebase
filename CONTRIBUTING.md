@@ -15,8 +15,11 @@ Run the same gate CI runs:
 ./quality.sh
 ```
 
-It needs `shellcheck`, `actionlint`, `jq` (`scripts/runlib.sh` parses
-`cargo metadata` with it), and (optionally) `cargo-deny`. Everything else is
+It needs `shellcheck`, `actionlint`, `python3` (standard library only; it runs
+`scripts/test_ledger_study_evidence.py`, the tests of the Issue #140 study
+receipt auditor, which CI runs in the shell-checks job), `jq`
+(`scripts/runlib.sh` parses `cargo metadata` with it), and (optionally)
+`cargo-deny`. Everything else is
 plain `cargo`: `neat-core` is a git dependency pinned to a NEAT-AI-core release
 tag, so no sibling checkout is required.
 
